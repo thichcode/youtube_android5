@@ -1,0 +1,35 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'io.gh.yourname.tizentubelite'
+    compileSdk 34
+    defaultConfig {
+        applicationId "io.gh.yourname.tizentubelite"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0-lite"
+        ndk { abiFilters "armeabi-v7a" }
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.webkit:webkit:1.6.1'
+}
