@@ -41,12 +41,14 @@ jobs:
 
       - name: Generate Gradle Wrapper
         run: |
-          if [ ! -f gradlew ]; then
+          chmod +x gradlew || true
+          ls -lh gradlew gradle/wrapper/ || true
+          cat gradle/wrapper/gradle-wrapper.properties
+          # ensure wrapper jar exists; regenerate if missing
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
             gradle wrapper --gradle-version 8.7
             chmod +x gradlew
           fi
-          ls -lh gradlew gradle/wrapper/ || true
-          cat gradle/wrapper/gradle-wrapper.properties
 
       - name: Build Debug APK
         run: ./gradlew :app:assembleDebug --stacktrace --info
