@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">TizenTube Lite</string>
+    <string name="webview_too_old">WebView too old (v%1$d). Please update Android System WebView via APKMirror.</string>
+</resources>
