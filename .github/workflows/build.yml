@@ -60,13 +60,15 @@ jobs:
         run: |
           ls -lh app/build/outputs/apk/debug/*.apk
           ls -lh app/build/outputs/apk/release/*.apk || true
-          $ANDROID_HOME/build-tools/34.0.0/aapt dump badging app/build/outputs/apk/debug/app-debug.apk | grep -E "sdkVersion|package" || true
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          echo "APK: $APK"
+          $ANDROID_HOME/build-tools/34.0.0/aapt dump badging "$APK" | grep -E "sdkVersion|package" || true
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: tizentube-lite-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/*.apk
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
@@ -94,7 +96,7 @@ jobs:
             - Ad-block only
             - WebView wrapper for low RAM boxes (1GB)
           files: |
-            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/release/*.apk
           fail_on_unmatched_files: false
           generate_release_notes: true
