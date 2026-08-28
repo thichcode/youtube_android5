@@ -2,8 +2,10 @@ package io.gh.yourname.tizentubelite;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.KeyEvent;
+import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -39,11 +41,21 @@ public class MainActivity extends Activity {
 
     private void load() {
         userScript = loadAsset("userScript.js");
+        // Cookie + storage to avoid bot check (YouTube needs cookies)
+        CookieManager cm = CookieManager.getInstance();
+        cm.setAcceptCookie(true);
+        if (Build.VERSION.SDK_INT >= 21) {
+            cm.setAcceptThirdPartyCookies(webView, true);
+            CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
+        }
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
+        s.setDatabaseEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setUserAgentString(WebViewHelper.USER_AGENT);
+        // Enable mixed content & file access for leanback
+        if (Build.VERSION.SDK_INT >= 21) s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         webView.addJavascriptInterface(new JsBridge(this), "TizenLite");
         webView.setWebViewClient(new WebViewClient() {
             @Override

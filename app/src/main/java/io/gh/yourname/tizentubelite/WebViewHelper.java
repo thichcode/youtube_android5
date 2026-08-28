@@ -6,7 +6,8 @@ import android.content.pm.PackageManager;
 
 public class WebViewHelper {
     public static final String YT_TV_URL = "https://www.youtube.com/tv";
-    public static final String USER_AGENT = "Mozilla/5.0 (Linux; Android 5.1; AFTM Build/LMY47M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.133 Safari/537.36";
+    // Modern Chrome 118 TV UA to reduce bot check (old 44 was flagged)
+    public static final String USER_AGENT = "Mozilla/5.0 (Linux; Android 11; AFTSS Build/FVerify) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.48 Safari/537.36";
 
     public static int getWebViewMajorVersion(Context ctx) {
         try {
@@ -24,6 +25,6 @@ public class WebViewHelper {
     }
 
     public static boolean isWebViewTooOld(Context ctx) {
-        return getWebViewMajorVersion(ctx) > 0 && getWebViewMajorVersion(ctx) < 50;
+        return getWebViewMajorVersion(ctx) > 0 && getWebViewMajorVersion(ctx) < 90;
     }
 }
