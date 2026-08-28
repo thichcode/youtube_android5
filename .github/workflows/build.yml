@@ -25,34 +25,38 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Set up Android SDK
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Accept licenses
         run: yes | sdkmanager --licenses || true
 
-      - name: Install Android platform & build-tools
-        run: |
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+      - name: Install platforms
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
 
-      - name: Setup Gradle wrapper
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.7
+
+      - name: Generate Gradle Wrapper
         run: |
           if [ ! -f gradlew ]; then
-            gradle wrapper --gradle-version 8.7 || echo "wrapper generation skipped"
+            gradle wrapper --gradle-version 8.7
+            chmod +x gradlew
           fi
-          chmod +x gradlew || true
+          ls -lh gradlew gradle/wrapper/ || true
+          cat gradle/wrapper/gradle-wrapper.properties
 
       - name: Build Debug APK
-        run: |
-          ./gradlew :app:assembleDebug --stacktrace || gradle :app:assembleDebug --stacktrace
+        run: ./gradlew :app:assembleDebug --stacktrace --info
 
       - name: Build Release APK
-        run: |
-          ./gradlew :app:assembleRelease --stacktrace || gradle :app:assembleRelease --stacktrace
+        run: ./gradlew :app:assembleRelease --stacktrace
 
-      - name: Verify APK (aapt)
+      - name: Verify APK
         run: |
-          ls -lh app/build/outputs/apk/debug/*.apk || true
+          ls -lh app/build/outputs/apk/debug/*.apk
           ls -lh app/build/outputs/apk/release/*.apk || true
           $ANDROID_HOME/build-tools/34.0.0/aapt dump badging app/build/outputs/apk/debug/app-debug.apk | grep -E "sdkVersion|package" || true
 
@@ -66,16 +70,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tizentube-lite-release
-          path: app/build/outputs/apk/release/app-release-*.apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: warn
 
       - name: Get version
         id: version
         run: |
-          VERSION=$(grep versionName app/build.gradle | sed "s/.*\"\(.*\)\".*/\1/")
+          VERSION=$(grep versionName app/build.gradle | sed 's/.*"\(.*\)".*/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=v$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
 
       - name: Create Release
         if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
@@ -86,18 +89,16 @@ jobs:
           body: |
             ## TizenTube Lite ${{ steps.version.outputs.version }}
             - Android 5.0+ (API 21), armeabi-v7a only, ~7-9MB
-            - Ad-block only (no SponsorBlock/DeArrow)
+            - Ad-block only
             - WebView wrapper for low RAM boxes (1GB)
-            - Install: `adb install tizentube-lite-release.apk`
           files: |
             app/build/outputs/apk/debug/app-debug.apk
-            app/build/outputs/apk/release/app-release*.apk
+            app/build/outputs/apk/release/*.apk
           fail_on_unmatched_files: false
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Auto-tag on push to master: create dated tag if version changed
   auto-tag:
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -109,11 +110,10 @@ jobs:
           VERSION=$(grep versionName app/build.gradle | sed 's/.*"\(.*\)".*/\1/')
           TAG="v$VERSION"
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists, skipping"
+            echo "Tag $TAG exists, skip"
           else
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git tag "$TAG"
             git push origin "$TAG"
-            echo "Pushed tag $TAG"
           fi
