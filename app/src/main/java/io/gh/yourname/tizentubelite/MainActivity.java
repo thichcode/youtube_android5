@@ -70,12 +70,11 @@ public class MainActivity extends Activity {
             @Override
             public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, android.webkit.WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                // DIAG: log all youtube requests to see if API is called
-                if (url.contains("youtube.com/youtubei/") || url.contains("youtube.com/api/")) {
+                if (url.contains("youtube.com/youtubei/") || url.contains("youtube.com/api/lounge/")) {
                     interceptCount++;
                     Log.d(TAG, "DIAG intercept #" + interceptCount + " url=" + url + " method=" + request.getMethod());
-                    // TEMP: disable proxy to test if proxy breaks skeleton (hypothesis: POST body not forwarded)
-                    // return super to let WebView load directly and see if skeletons fill
+                    // FIX: disable broken proxy - POST body not available via WebResourceRequest#getBody (no such API)
+                    // Letting WebView go direct avoids 400 Bad Request seen in 1.0.10 logs
                 }
                 return super.shouldInterceptRequest(view, request);
             }
