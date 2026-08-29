@@ -8,6 +8,7 @@ import java.util.List;
 import okhttp3.*;
 
 public class YoutubeRepository {
+    public static final String TAG = "TizenTubeRepo";
     private static final String BASE = "https://yt-tv-proxy.dvt-kisu.workers.dev";
     private static final String YT_DIRECT = "https://www.youtube.com";
     private static final String ANDROID_KEY = "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w";
@@ -292,7 +293,9 @@ public class YoutubeRepository {
         if (url != null) return url;
         // 3) Fallback through Worker proxy
         JSONObject res = post("/youtubei/v1/player", ctx);
-        return pickStream(res);
+        url = pickStream(res);
+        if (url == null) android.util.Log.d(TAG, "worker player also returned no stream");
+        return url;
     }
 
     private String directPlayer(String videoId, JSONObject ctx) throws IOException {
@@ -331,9 +334,11 @@ public class YoutubeRepository {
         if (apiKey != null) rb.header("X-Goog-API-Key", apiKey);
         try (Response resp = client.newCall(rb.build()).execute()) {
             String txt = resp.body() != null ? resp.body().string() : "{}";
+            android.util.Log.d(TAG, "player " + (apiKey == null ? "TV" : "ANDROID") + " HTTP " + resp.code() + " len " + txt.length() + " gate=" + txt.contains("LOGIN_REQUIRED"));
             JSONObject j = new JSONObject(txt);
             return pickStream(j);
         } catch (Exception e) {
+            android.util.Log.d(TAG, "player direct failed: " + e);
             return null;
         }
     }
