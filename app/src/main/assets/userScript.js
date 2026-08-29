@@ -67,6 +67,26 @@
             window._yttv[key].JSON.parse = JSON.parse;
         }
     }
+    // Bypass lounge/Ready to cast: if stuck on cast screen, go to browse
+    function bypassCast() {
+        var txt = document.body ? document.body.innerText : '';
+        if (txt.includes('Ready to cast') && txt.includes('NO DEBUG ACCESS')) {
+            console.log('[TizenTubeLite] bypassing cast screen');
+            // Try history push to browse
+            try { history.pushState({}, '', '/tv/browse'); location.href = '/tv/browse'; } catch(e) {}
+            // Also try clicking any browse element
+            var btn = document.querySelector('[data-action="browse"], a[href*="/tv/browse"]');
+            if (btn) btn.click();
+        }
+        // Hide red debug bar
+        document.querySelectorAll('*').forEach(function(el){
+            if (el.textContent && el.textContent.includes('NO DEBUG ACCESS')) {
+                var p = el;
+                while(p && p.tagName !== 'BODY') { p = p.parentElement; if(p && p.style) p.style.display='none'; break; }
+            }
+        });
+    }
+    setInterval(bypassCast, 1500);
     // DOM-level fallback: skip ad if JSON patch missed
     function skipAdDOM() {
         var video = document.querySelector('video');
@@ -78,7 +98,7 @@
         }
         document.querySelectorAll('.ytp-ad-overlay-container, .ytp-ad-image-overlay, .ad-container').forEach(function(e){ e.style.display='none'; });
     }
-    var obs = new MutationObserver(function(){ skipAdDOM(); });
+    var obs = new MutationObserver(function(){ skipAdDOM(); bypassCast(); });
     try { obs.observe(document.documentElement, {childList:true, subtree:true}); } catch(e) {}
     setInterval(skipAdDOM, 700);
     // limit to 720p on low RAM
