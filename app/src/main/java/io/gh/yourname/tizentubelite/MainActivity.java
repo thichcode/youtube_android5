@@ -73,8 +73,6 @@ public class MainActivity extends Activity {
                 if (url.contains("youtube.com/youtubei/") || url.contains("youtube.com/api/lounge/")) {
                     interceptCount++;
                     Log.d(TAG, "DIAG intercept #" + interceptCount + " url=" + url + " method=" + request.getMethod());
-                    // FIX: disable broken proxy - POST body not available via WebResourceRequest#getBody (no such API)
-                    // Letting WebView go direct avoids 400 Bad Request seen in 1.0.10 logs
                 }
                 return super.shouldInterceptRequest(view, request);
             }
@@ -82,6 +80,7 @@ public class MainActivity extends Activity {
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 Log.d(TAG, "DIAG onPageStarted url=" + url);
                 view.evaluateJavascript(WebViewHelper.BOT_SPOOF_JS, null);
+                view.evaluateJavascript(WebViewHelper.FETCH_PROXY_JS, null);
             }
             @Override
             public void onPageFinished(WebView view, String url) {

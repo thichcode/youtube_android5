@@ -1,8 +1,38 @@
-// TizenTube Lite - ad-block only (stripped from TizenTube 1.7.0 mods/adblock.js)
-// Removed: heavy features (branding, segments, thumbnails, chapters)
-// Always enabled - no configRead dependency
+// TizenTube Lite - ad-block + Worker proxy for youtubei via JS (fixes POST body via shouldInterceptRequest)
 (function() {
     'use strict';
+    // Proxy youtubei/v1 through Cloudflare Worker to bypass bot IP (Memu 400)
+    // WebView shouldInterceptRequest cannot forward POST body, so override fetch/XHR in JS
+    (function(){
+        const PROXY = "https://yt-tv-proxy.dvt-kisu.workers.dev";
+        const ORIG = "https://www.youtube.com";
+        function proxyUrl(u){
+            if(typeof u!=="string") return u;
+            if(u.indexOf(ORIG+"/youtubei/")===0) return u.replace(ORIG, PROXY);
+            if(u.indexOf("/youtubei/")===0) return PROXY + u;
+            if(u.indexOf("youtubei/")===0) return PROXY + "/" + u;
+            return u;
+        }
+        try {
+            const origFetch = window.fetch;
+            window.fetch = function(input, init){
+                try {
+                    let url = typeof input==="string" ? input : (input && input.url ? input.url : null);
+                    let proxied = proxyUrl(url);
+                    if(proxied!==url) console.log("[TizenTubeLite] proxy fetch "+url+" -> "+proxied);
+                    if (typeof input==="string") input = proxied;
+                    else if (input && input.url && proxied!==input.url) input = new Request(proxied, input);
+                } catch(e){}
+                return origFetch.call(this, input, init);
+            };
+            const origOpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function(method, url, async, user, pass){
+                try{ let pu=proxyUrl(url); if(pu!==url) console.log("[TizenTubeLite] proxy XHR "+url+" -> "+pu); url=pu; }catch(e){}
+                return origOpen.call(this, method, url, async, user, pass);
+            };
+            console.log("[TizenTubeLite] fetch/XHR proxy enabled -> "+PROXY);
+        } catch(e){ console.log("[TizenTubeLite] proxy hook failed "+e); }
+    })();
     const origParse = JSON.parse;
     JSON.parse = function() {
         const r = origParse.apply(this, arguments);
