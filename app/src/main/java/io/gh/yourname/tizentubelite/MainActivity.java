@@ -57,10 +57,28 @@ public class MainActivity extends Activity {
         // Enable mixed content & file access for leanback
         if (Build.VERSION.SDK_INT >= 21) s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         webView.addJavascriptInterface(new JsBridge(this), "TizenLite");
+        // Spoof webdriver before any page loads
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                view.evaluateJavascript(WebViewHelper.BOT_SPOOF_JS, null);
+            }
+            @Override
             public void onPageFinished(WebView view, String url) {
+                view.evaluateJavascript(WebViewHelper.BOT_SPOOF_JS, null);
                 if (userScript != null) view.evaluateJavascript(userScript, null);
+                // Detect bot check page and offer fallback
+                view.evaluateJavascript("(function(){var t=document.body?document.body.innerText:'';if(t.includes('not a bot')||t.includes('Sign in to confirm')){return 'BOT_DETECTED';}return 'OK';})();", value -> {
+                    if (value != null && value.contains("BOT_DETECTED")) {
+                        new AlertDialog.Builder(MainActivity.this)
+                            .setTitle("YouTube bot check")
+                            .setMessage("YouTube yêu cầu xác minh. Thử mở m.youtube.com (ít bị check hơn) hoặc quét QR yt.be/activate trên điện thoại?")
+                            .setPositiveButton("Thử m.youtube.com", (d,w)-> view.loadUrl(WebViewHelper.FALLBACK_URL))
+                            .setNegativeButton("Thử lại TV", (d,w)-> view.reload())
+                            .setNeutralButton("Đóng", null)
+                            .show();
+                    }
+                });
             }
             @Override
             public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
@@ -69,6 +87,8 @@ public class MainActivity extends Activity {
             }
         });
         webView.setWebChromeClient(new WebChromeClient());
+        // Enable debugging for inspecting bot check
+        if (Build.VERSION.SDK_INT >= 19) WebView.setWebContentsDebuggingEnabled(true);
         webView.loadUrl(WebViewHelper.YT_TV_URL);
         webView.requestFocus();
     }
