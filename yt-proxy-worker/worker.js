@@ -1,6 +1,7 @@
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    console.log(`[Worker] ${request.method} ${url.pathname}${url.search} UA=${(request.headers.get("User-Agent")||"").slice(0,40)}`);
     const targetHostname = "www.youtube.com";
     const targetUrl = `https://${targetHostname}${url.pathname}${url.search}`;
 
