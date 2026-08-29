@@ -48,20 +48,23 @@ jobs:
 
       - name: Patch minSdk 24 -> 21
         run: |
-          java -jar apktool.jar d cobalt-original.apk -o cobalt-decoded --no-src || java -jar apktool.jar d cobalt-original.apk -o cobalt-decoded
-          cat cobalt-decoded/apktool.yml | head -30
-          # patch apktool.yml minSdk
-          sed -i 's/minSdkVersion:.*24/minSdkVersion: 21/' cobalt-decoded/apktool.yml || true
-          sed -i "s/minSdkVersion: '24'/minSdkVersion: '21'/" cobalt-decoded/apktool.yml || true
-          grep -n "minSdk" cobalt-decoded/apktool.yml || true
-          # patch AndroidManifest if exists
+          set -x
+          rm -rf cobalt-decoded
+          java -jar apktool.jar d cobalt-original.apk -o cobalt-decoded --no-src 2>&1 | head -100
+          echo "decode exit:$?"
+          ls -lh cobalt-decoded/ | head -20
+          cat cobalt-decoded/apktool.yml | head -40 || true
+          # patch any minSdkVersion (handles 24,26,28 etc)
+          sed -i -E 's/minSdkVersion: .*/minSdkVersion: 21/' cobalt-decoded/apktool.yml || true
+          sed -i -E "s/minSdkVersion: '.*'/minSdkVersion: '21'/" cobalt-decoded/apktool.yml || true
+          grep -n "minSdk" cobalt-decoded/apktool.yml || echo "no minSdk in apktool.yml"
           if [ -f cobalt-decoded/AndroidManifest.xml ]; then
-            sed -i 's/android:minSdkVersion="24"/android:minSdkVersion="21"/' cobalt-decoded/AndroidManifest.xml || true
+            sed -i -E 's/android:minSdkVersion="[0-9]+"/android:minSdkVersion="21"/' cobalt-decoded/AndroidManifest.xml || true
             grep -n "minSdk" cobalt-decoded/AndroidManifest.xml || true
           fi
-          # rebuild
-          java -jar apktool.jar b cobalt-decoded -o cobalt-patched-unsigned.apk
-          ls -lh cobalt-patched*.apk
+          java -jar apktool.jar b cobalt-decoded -o cobalt-patched-unsigned.apk 2>&1 | tail -30
+          echo "build exit:$?"
+          ls -lh cobalt-patched*.apk || ls -lh *.apk
 
       - name: Sign APK (debug keystore)
         run: |
