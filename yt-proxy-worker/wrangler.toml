@@ -1,0 +1,6 @@
+name = "yt-tv-proxy"
+main = "worker.js"
+compatibility_date = "2024-08-01"
+
+# For free tier, no special config needed
+# Deploy with: npx wrangler deploy
