@@ -9,8 +9,8 @@ android {
         applicationId "io.gh.yourname.tizentubelite"
         minSdk 21
         targetSdk 34
-        versionCode 4
-        versionName "1.0.3-lite"
+        versionCode 5
+        versionName "1.0.4-lite"
         ndk { abiFilters "armeabi-v7a" }
     }
     buildTypes {
@@ -27,7 +27,7 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-    // APK filename = TizenTubeLite-v{versionName}.apk (matches git tag v1.0.3-lite)
+    // APK filename = TizenTubeLite-v{versionName}.apk (matches git tag v1.0.4-lite)
     applicationVariants.all { variant ->
         variant.outputs.all {
             def buildType = variant.buildType.name
