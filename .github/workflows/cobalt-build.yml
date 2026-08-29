@@ -9,81 +9,78 @@ permissions:
   contents: write
 
 jobs:
-  build-cobalt:
+  patch-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
     steps:
-      - name: Checkout this repo (for patch)
+      - name: Checkout cobalt branch
         uses: actions/checkout@v4
         with:
           ref: cobalt
-          path: youtube_android5
 
-      - name: Checkout TizenTubeCobalt (shallow + filter)
-        run: |
-          git clone --depth 1 --filter=blob:none https://github.com/reisxd/TizenTubeCobalt.git TizenTubeCobalt
-          ls -lh TizenTubeCobalt/build/config/android/config.gni
-
-      - name: Apply Android 5 patch
-        run: |
-          cd TizenTubeCobalt
-          patch -p1 < ../youtube_android5/cobalt-patch/android5.patch || {
-            echo "patch apply failed, try manual sed"
-            sed -i 's/default_min_sdk_version = 24/default_min_sdk_version = 21/' build/config/android/config.gni
-          }
-          grep -n "default_min_sdk_version" build/config/android/config.gni | head -5
-
-      - name: Set up depot_tools + gn
-        run: |
-          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
-          echo "$PWD/depot_tools" >> $GITHUB_PATH
-
-      - name: Install deps (best effort)
-        run: |
-          sudo apt-get update && sudo apt-get install -y python3 python3-pip pkg-config libnss3-dev || true
-          pip3 install --user httplib2 || true
-
-      - name: gclient sync (shallow)
-        run: |
-          cd TizenTubeCobalt
-          echo 'solutions = [{"name":"src","url":"https://github.com/reisxd/TizenTubeCobalt.git","deps_file":".DEPS","managed":False,"custom_deps":{}}]' > .gclient
-          echo 'target_os = ["android"]' >> .gclient
-          gclient sync --no-history --shallow || echo "gclient sync partial, continue"
-          # Generate missing gclient_args.gni if not created
-          if [ ! -f build/config/gclient_args.gni ]; then
-            mkdir -p build/config
-            cat > build/config/gclient_args.gni << 'EOF'
-          # Generated for Cobalt Android 5 build
-          checkout_android = true
-          checkout_src_internal = false
-          checkout_nacl = false
-          checkout_fuchsia = false
-          EOF
-            cat build/config/gclient_args.gni
-          fi
-          ls -lh build/config/gclient_args.gni || true
-
-      - name: gn gen
-        run: |
-          cd TizenTubeCobalt
-          # ensure gclient_args exists
-          if [ ! -f build/config/gclient_args.gni ]; then
-            echo 'checkout_android = true' > build/config/gclient_args.gni
-          fi
-          gn gen out/cobalt --args='target_os="android" is_cobalt=true is_debug=false is_official_build=false use_goma=false'
-
-      - name: Build cobalt_apk
-        run: |
-          cd TizenTubeCobalt
-          ninja -C out/cobalt cobalt_apk -k 0 || ninja -C out/cobalt -k 0
-
-      - name: Verify & Upload
-        run: |
-          ls -lh TizenTubeCobalt/out/cobalt/apks/*.apk || ls -lh TizenTubeCobalt/out/*/apks/*.apk || true
-          $ANDROID_HOME/build-tools/34.0.0/aapt dump badging TizenTubeCobalt/out/cobalt/apks/Cobalt.apk | grep sdkVersion || true
-
-      - uses: actions/upload-artifact@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
-          name: cobalt-android5-apk
-          path: TizenTubeCobalt/out/**/apks/*.apk
-          if-no-files-found: warn
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install apktool + apksigner
+        run: |
+          sudo apt-get update && sudo apt-get install -y wget apksigner || true
+          wget -q https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool -O apktool
+          wget -q https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar -O apktool.jar
+          chmod +x apktool
+          ls -lh apktool* || true
+
+      - name: Download latest TizenTubeCobalt APK
+        run: |
+          LATEST=$(curl -s https://api.github.com/repos/reisxd/TizenTubeCobalt/releases/latest | grep browser_download_url | grep -i "\.apk" | head -1 | cut -d '"' -f 4)
+          echo "Latest APK: $LATEST"
+          if [ -z "$LATEST" ]; then
+            # fallback: list releases
+            curl -s https://api.github.com/repos/reisxd/TizenTubeCobalt/releases | grep browser_download_url | head -5
+            exit 1
+          fi
+          wget -q "$LATEST" -O cobalt-original.apk
+          ls -lh cobalt-original.apk
+          $ANDROID_HOME/build-tools/34.0.0/aapt dump badging cobalt-original.apk | grep -E "sdkVersion|package" || true
+
+      - name: Patch minSdk 24 -> 21
+        run: |
+          java -jar apktool.jar d cobalt-original.apk -o cobalt-decoded --no-src || java -jar apktool.jar d cobalt-original.apk -o cobalt-decoded
+          cat cobalt-decoded/apktool.yml | head -30
+          # patch apktool.yml minSdk
+          sed -i 's/minSdkVersion:.*24/minSdkVersion: 21/' cobalt-decoded/apktool.yml || true
+          sed -i "s/minSdkVersion: '24'/minSdkVersion: '21'/" cobalt-decoded/apktool.yml || true
+          grep -n "minSdk" cobalt-decoded/apktool.yml || true
+          # patch AndroidManifest if exists
+          if [ -f cobalt-decoded/AndroidManifest.xml ]; then
+            sed -i 's/android:minSdkVersion="24"/android:minSdkVersion="21"/' cobalt-decoded/AndroidManifest.xml || true
+            grep -n "minSdk" cobalt-decoded/AndroidManifest.xml || true
+          fi
+          # rebuild
+          java -jar apktool.jar b cobalt-decoded -o cobalt-patched-unsigned.apk
+          ls -lh cobalt-patched*.apk
+
+      - name: Sign APK (debug keystore)
+        run: |
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out TizenTubeCobalt-v1.0.1-cobalt-android5.apk cobalt-patched-unsigned.apk || \
+            jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA256 -keystore debug.keystore -storepass android cobalt-patched-unsigned.apk androiddebugkey && cp cobalt-patched-unsigned.apk TizenTubeCobalt-v1.0.1-cobalt-android5.apk
+          ls -lh TizenTube*.apk
+          $ANDROID_HOME/build-tools/34.0.0/aapt dump badging TizenTubeCobalt-v1.0.1-cobalt-android5.apk | grep -E "sdkVersion|package" || true
+
+      - name: Upload patched APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobalt-android5-patched
+          path: TizenTubeCobalt-*.apk
+
+      - name: Create Release (on tag)
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: TizenTubeCobalt-*.apk
+          fail_on_unmatched_files: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
