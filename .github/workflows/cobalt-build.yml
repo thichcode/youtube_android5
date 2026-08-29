@@ -3,6 +3,7 @@ name: Cobalt Android 5 Build (API 21)
 on:
   push:
     branches: [cobalt]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
