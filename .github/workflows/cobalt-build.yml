@@ -46,25 +46,53 @@ jobs:
           ls -lh cobalt-original.apk
           $ANDROID_HOME/build-tools/34.0.0/aapt dump badging cobalt-original.apk | grep -E "sdkVersion|package" || true
 
-      - name: Patch minSdk 24 -> 21
+      - name: Patch minSdk 24 -> 21 (binary + apktool fallback)
         run: |
           set -x
-          rm -rf cobalt-decoded
-          java -jar apktool.jar d cobalt-original.apk -o cobalt-decoded --no-src 2>&1 | head -100
-          echo "decode exit:$?"
-          ls -lh cobalt-decoded/ | head -20
-          cat cobalt-decoded/apktool.yml | head -40 || true
-          # patch any minSdkVersion (handles 24,26,28 etc)
-          sed -i -E 's/minSdkVersion: .*/minSdkVersion: 21/' cobalt-decoded/apktool.yml || true
-          sed -i -E "s/minSdkVersion: '.*'/minSdkVersion: '21'/" cobalt-decoded/apktool.yml || true
-          grep -n "minSdk" cobalt-decoded/apktool.yml || echo "no minSdk in apktool.yml"
-          if [ -f cobalt-decoded/AndroidManifest.xml ]; then
-            sed -i -E 's/android:minSdkVersion="[0-9]+"/android:minSdkVersion="21"/' cobalt-decoded/AndroidManifest.xml || true
-            grep -n "minSdk" cobalt-decoded/AndroidManifest.xml || true
+          # Try 1: binary patch AndroidManifest.xml directly (no decode, keeps native libs intact)
+          python3 - << 'PY' || echo "python patch failed"
+          import zipfile, re, os
+          apk_in = "cobalt-original.apk"
+          apk_out = "cobalt-patched-unsigned.apk"
+          # fallback: try apktool if python fails
+          try:
+              import struct
+              with zipfile.ZipFile(apk_in, 'r') as zin:
+                  manifest = zin.read('AndroidManifest.xml')
+                  # Binary XML: search for minSdk integer 24 (0x18) in manifest
+                  # Simple replace: 24 -> 21 in binary (little endian)
+                  # minSdk is stored as integer attribute
+                  patched = manifest.replace(b'\x18\x00\x00\x00', b'\x15\x00\x00\x00', 1)
+                  if patched != manifest:
+                      print("binary patch: 24 -> 21 done")
+                  else:
+                      print("binary patch: pattern not found, will use apktool")
+                      raise Exception("no patch")
+                  with zipfile.ZipFile(apk_out, 'w', compression=zipfile.ZIP_STORED) as zout:
+                      for item in zin.infolist():
+                          data = patched if item.filename == 'AndroidManifest.xml' else zin.read(item.filename)
+                          zout.writestr(item, data)
+              print("binary patch success")
+          except Exception as e:
+              print(f"binary patch failed: {e}")
+              if os.path.exists(apk_out):
+                  os.remove(apk_out)
+          PY
+          if [ -f cobalt-patched-unsigned.apk ]; then
+            echo "binary patch OK"
+            ls -lh cobalt-patched*.apk
+          else
+            echo "fallback to apktool with aapt2"
+            rm -rf cobalt-decoded
+            java -jar apktool.jar d cobalt-original.apk -o cobalt-decoded --no-src 2>&1 | head -50
+            sed -i -E 's/minSdkVersion: .*/minSdkVersion: 21/' cobalt-decoded/apktool.yml || true
+            sed -i -E "s/minSdkVersion: '.*'/minSdkVersion: '21'/" cobalt-decoded/apktool.yml || true
+            if [ -f cobalt-decoded/AndroidManifest.xml ]; then
+              sed -i -E 's/android:minSdkVersion="[0-9]+"/android:minSdkVersion="21"/' cobalt-decoded/AndroidManifest.xml || true
+            fi
+            java -jar apktool.jar b cobalt-decoded -o cobalt-patched-unsigned.apk --use-aapt2 2>&1 | tail -30
+            ls -lh cobalt-patched*.apk
           fi
-          java -jar apktool.jar b cobalt-decoded -o cobalt-patched-unsigned.apk 2>&1 | tail -30
-          echo "build exit:$?"
-          ls -lh cobalt-patched*.apk || ls -lh *.apk
 
       - name: Sign APK (debug keystore)
         run: |
