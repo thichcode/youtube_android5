@@ -1,0 +1,25 @@
+diff --git a/build/config/android/config.gni b/build/config/android/config.gni
+--- a/build/config/android/config.gni
++++ b/build/config/android/config.gni
+@@ -55,7 +55,7 @@ if (is_android) {
+     if (is_cobalt) {
+       # Cobalt maintains backward compatibility with Android 7.0 (API 24), consistent
+-      # with Cobalt 25 and 26 releases. Setting this to 24 ensures the Android
+-      # platform config compiles cleanly targeting API 24, while advanced system
+-      # APIs (such as AAudio and AImageReader) are excluded from linking and safely
+-      # disabled at runtime. See b/508072838, b/422247849.
+-      default_min_sdk_version = 24
++      # Patched for TizenTube Lite Android 5: hạ về 21 để chạy box Amlogic S905 1GB
++      # min_supported_sdk_version = 21 nên build pass, NDK api_level tự theo.
++      # Cần guard FOREGROUND_SERVICE/profileable ở Java nếu build fail.
++      default_min_sdk_version = 21
+     }
+ 
+ # Optional: guard shell_apk manifest nếu fail với API 21
+diff --git a/cobalt/shell/android/shell_apk/AndroidManifest.xml.jinja2 b/cobalt/shell/android/shell_apk/AndroidManifest.xml.jinja2
+--- a/cobalt/shell/android/shell_apk/AndroidManifest.xml.jinja2
++++ b/cobalt/shell/android/shell_apk/AndroidManifest.xml.jinja2
+@@ -39,1 +39,1 @@
+-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
++    <!-- Patched for API 21: FOREGROUND_SERVICE requires API 28+, comment out for Android 5 build -->
++    <!-- <uses-permission android:name="android.permission.FOREGROUND_SERVICE" /> -->

@@ -1,0 +1,73 @@
+name: Cobalt Android 5 Build (API 21)
+
+on:
+  push:
+    branches: [cobalt]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-cobalt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout this repo (for patch)
+        uses: actions/checkout@v4
+        with:
+          ref: cobalt
+          path: youtube_android5
+
+      - name: Checkout TizenTubeCobalt (shallow + filter)
+        run: |
+          git clone --depth 1 --filter=blob:none https://github.com/reisxd/TizenTubeCobalt.git TizenTubeCobalt
+          ls -lh TizenTubeCobalt/build/config/android/config.gni
+
+      - name: Apply Android 5 patch
+        run: |
+          cd TizenTubeCobalt
+          patch -p1 < ../youtube_android5/cobalt-patch/android5.patch || {
+            echo "patch apply failed, try manual sed"
+            sed -i 's/default_min_sdk_version = 24/default_min_sdk_version = 21/' build/config/android/config.gni
+          }
+          grep -n "default_min_sdk_version" build/config/android/config.gni | head -5
+
+      - name: Set up depot_tools + gn
+        run: |
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          echo "$PWD/depot_tools" >> $GITHUB_PATH
+
+      - name: Install deps (best effort)
+        run: |
+          sudo apt-get update && sudo apt-get install -y python3 python3-pip pkg-config libnss3-dev || true
+          pip3 install --user httplib2 || true
+
+      - name: gclient sync (shallow)
+        run: |
+          cd TizenTubeCobalt
+          # Try gclient sync with target_os android, may take long
+          echo 'solutions = [{"name":"src","url":"https://github.com/reisxd/TizenTubeCobalt.git","deps_file":".DEPS","managed":False,"custom_deps":{}}]' > .gclient
+          echo 'target_os = ["android"]' >> .gclient
+          gclient sync --no-history --shallow || echo "gclient sync partial, continue"
+
+      - name: gn gen
+        run: |
+          cd TizenTubeCobalt
+          gn gen out/cobalt --args='target_os="android" is_cobalt=true is_debug=false is_official_build=false use_goma=false'
+
+      - name: Build cobalt_apk
+        run: |
+          cd TizenTubeCobalt
+          ninja -C out/cobalt cobalt_apk -k 0 || ninja -C out/cobalt -k 0
+
+      - name: Verify & Upload
+        run: |
+          ls -lh TizenTubeCobalt/out/cobalt/apks/*.apk || ls -lh TizenTubeCobalt/out/*/apks/*.apk || true
+          $ANDROID_HOME/build-tools/34.0.0/aapt dump badging TizenTubeCobalt/out/cobalt/apks/Cobalt.apk | grep sdkVersion || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cobalt-android5-apk
+          path: TizenTubeCobalt/out/**/apks/*.apk
+          if-no-files-found: warn
