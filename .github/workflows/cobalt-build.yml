@@ -25,11 +25,12 @@ jobs:
 
       - name: Install apktool
         run: |
-          wget -q https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool -O apktool
-          wget -q https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar -O apktool.jar
-          chmod +x apktool apktool.jar || chmod +x apktool
+          set -x
+          curl -sL https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool -o apktool
+          curl -sL https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar -o apktool.jar
+          chmod +x apktool
           ls -lh apktool* || true
-          java -jar apktool.jar --version || true
+          java -jar apktool.jar --version || java -jar apktool.jar version || true
 
       - name: Download latest TizenTubeCobalt APK
         run: |
