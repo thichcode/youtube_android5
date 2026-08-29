@@ -27,6 +27,9 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+    testOptions {
+        unitTests.returnDefaultValues = false
+    }
     // APK filename = TizenTubeLite-v{versionName}.apk (matches git tag v1.0.18-webview95)
     applicationVariants.all { variant ->
         variant.outputs.all {
@@ -43,4 +46,6 @@ dependencies {
     implementation 'androidx.leanback:leanback:1.0.0'
     implementation 'com.google.android.exoplayer:exoplayer:2.18.7'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20210307'
 }
