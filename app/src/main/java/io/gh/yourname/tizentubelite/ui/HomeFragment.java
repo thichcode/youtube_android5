@@ -9,6 +9,7 @@ import androidx.leanback.widget.*;
 import io.gh.yourname.tizentubelite.data.Section;
 import io.gh.yourname.tizentubelite.data.Video;
 import io.gh.yourname.tizentubelite.data.YoutubeRepository;
+import java.util.ArrayList;
 import java.util.List;
 
 public class HomeFragment extends BrowseSupportFragment {
@@ -36,10 +37,20 @@ public class HomeFragment extends BrowseSupportFragment {
     private void load() {
         new Thread(() -> {
             try {
-                List<Section> sections = new YoutubeRepository().browse();
+                YoutubeRepository repo = new YoutubeRepository();
+                List<Section> sections = repo.browse();
+                if (sections == null || sections.isEmpty()) {
+                    sections = new ArrayList<>();
+                    String[] defaults = {"Trending", "Music", "Movies on YouTube", "Gaming"};
+                    for (String q : defaults) {
+                        List<Video> vids = repo.search(q);
+                        if (!vids.isEmpty()) sections.add(new Section(q, vids));
+                    }
+                }
                 if (getActivity() == null) return;
+                final List<Section> fs = sections;
                 getActivity().runOnUiThread(() -> {
-                    for (Section s : sections) {
+                    for (Section s : fs) {
                         ArrayObjectAdapter listRowAdapter = new ArrayObjectAdapter(new CardPresenter());
                         for (Video v : s.videos) listRowAdapter.add(v);
                         HeaderItem header = new HeaderItem(s.title);

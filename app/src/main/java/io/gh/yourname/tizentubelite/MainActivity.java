@@ -1,10 +1,10 @@
 package io.gh.yourname.tizentubelite;
 
 import android.os.Bundle;
-import androidx.appcompat.app.AppCompatActivity;
+import androidx.fragment.app.FragmentActivity;
 import io.gh.yourname.tizentubelite.ui.HomeFragment;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends FragmentActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
