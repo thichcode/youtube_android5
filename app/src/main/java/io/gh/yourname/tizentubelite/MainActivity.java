@@ -70,32 +70,12 @@ public class MainActivity extends Activity {
             @Override
             public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, android.webkit.WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                boolean isApi = url.contains("youtube.com/youtubei/v1/") || url.contains("youtube.com/api/");
-                if (isApi) {
+                // DIAG: log all youtube requests to see if API is called
+                if (url.contains("youtube.com/youtubei/") || url.contains("youtube.com/api/")) {
                     interceptCount++;
                     Log.d(TAG, "DIAG intercept #" + interceptCount + " url=" + url + " method=" + request.getMethod());
-                    try {
-                        String proxied = url.replace("https://www.youtube.com", WebViewHelper.PROXY_BASE);
-                        Log.d(TAG, "DIAG proxied=" + proxied);
-                        java.net.URL u = new java.net.URL(proxied);
-                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
-                        conn.setRequestMethod(request.getMethod());
-                        for (String h : request.getRequestHeaders().keySet()) {
-                            conn.setRequestProperty(h, request.getRequestHeaders().get(h));
-                        }
-                        conn.setRequestProperty("User-Agent", WebViewHelper.USER_AGENT);
-                        conn.setConnectTimeout(10000);
-                        conn.setReadTimeout(10000);
-                        conn.connect();
-                        int code = conn.getResponseCode();
-                        Log.d(TAG, "DIAG proxy response code=" + code + " for " + url);
-                        String mime = conn.getContentType();
-                        if (mime == null) mime = "application/json";
-                        String enc = conn.getContentEncoding();
-                        return new android.webkit.WebResourceResponse(mime.split(";")[0], enc != null ? enc : "utf-8", conn.getInputStream());
-                    } catch (Exception e) {
-                        Log.e(TAG, "DIAG proxy failed for " + url + " err=" + e.getMessage(), e);
-                    }
+                    // TEMP: disable proxy to test if proxy breaks skeleton (hypothesis: POST body not forwarded)
+                    // return super to let WebView load directly and see if skeletons fill
                 }
                 return super.shouldInterceptRequest(view, request);
             }
