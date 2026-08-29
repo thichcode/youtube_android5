@@ -9,8 +9,8 @@ android {
         applicationId "io.gh.yourname.tizentubelite"
         minSdk 21
         targetSdk 34
-        versionCode 19
-        versionName "1.0.18-webview95"
+versionCode 20
+    versionName "2.0.0-native"
         ndk { abiFilters "armeabi-v7a" }
     }
     buildTypes {
