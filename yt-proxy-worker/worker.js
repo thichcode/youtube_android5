@@ -4,27 +4,21 @@ export default {
     const targetHostname = "www.youtube.com";
     const targetUrl = `https://${targetHostname}${url.pathname}${url.search}`;
 
-    // Only proxy YouTube TV and API paths, let googlevideo go direct (not proxied)
-    // If request is for worker root, redirect to /tv
     if (url.pathname === "/" || url.pathname === "") {
       return Response.redirect(`${url.origin}/tv`, 302);
     }
 
-    // Prepare headers - spoof TV
     const headers = new Headers(request.headers);
     headers.set("Host", targetHostname);
     headers.set("User-Agent", "Mozilla/5.0 (Linux; Android 11; AFTSS Build/RTM2.230615.001) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.48 Safari/537.36 CrKey/1.54 TV Cobalt/27.lts.2-qa");
     headers.set("Referer", `https://${targetHostname}/tv`);
     headers.set("Origin", `https://${targetHostname}`);
-    // Remove Cloudflare headers that may flag bot
     headers.delete("cf-connecting-ip");
     headers.delete("cf-ray");
     headers.delete("x-forwarded-for");
-    // Ensure cookies are passed
     headers.set("Accept", headers.get("Accept") || "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
     headers.set("Accept-Language", "en-US,en;q=0.9");
 
-    // Handle preflight
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
@@ -55,7 +49,6 @@ export default {
       return new Response(`Proxy error: ${e.message}`, { status: 502 });
     }
 
-    // Handle redirects - rewrite youtube.com redirects to worker origin
     if (response.status >= 300 && response.status < 400) {
       const loc = response.headers.get("Location");
       if (loc && loc.includes(targetHostname)) {
@@ -66,23 +59,36 @@ export default {
       }
     }
 
-    // Clone response to modify
     const contentType = response.headers.get("Content-Type") || "";
     let newHeaders = new Headers(response.headers);
-    // CORS and remove security headers that block embedding
     newHeaders.set("Access-Control-Allow-Origin", "*");
     newHeaders.set("Access-Control-Allow-Credentials", "true");
     newHeaders.delete("Content-Security-Policy");
     newHeaders.delete("X-Frame-Options");
     newHeaders.delete("Clear-Site-Data");
-    // Keep cookies
-    // For HTML, rewrite absolute youtube.com URLs to worker origin to keep subsequent requests proxied
+    // FIX: Rewrite Set-Cookie Domain=.youtube.com -> no Domain (so it works on workers.dev)
+    // Otherwise cookies with Domain youtube.com are ignored on workers.dev and YouTube shows "NO DEBUG ACCESS"
+    const cookies = response.headers.getSetCookie ? response.headers.getSetCookie() : [];
+    // Fallback for older runtime
+    if (cookies.length > 0) {
+      newHeaders.delete("Set-Cookie");
+      for (let c of cookies) {
+        // Remove Domain attribute
+        let fixed = c.replace(/Domain=\.?youtube\.com;?/gi, "").replace(/Domain=\.?google\.com;?/gi, "").replace(/;;/g, ";").trim();
+        newHeaders.append("Set-Cookie", fixed);
+      }
+    } else {
+      // Single Set-Cookie header fallback
+      const sc = response.headers.get("Set-Cookie");
+      if (sc && sc.includes("Domain=.youtube.com")) {
+        newHeaders.set("Set-Cookie", sc.replace(/Domain=\.?youtube\.com;?/gi, ""));
+      }
+    }
+
     if (contentType.includes("text/html")) {
       let text = await response.text();
-      // Rewrite https://www.youtube.com -> worker origin
-      text = text.replaceAll(`https://${targetHostname}`, url.origin);
-      text = text.replaceAll(`https:\\/\\/www\\.youtube\\.com`, url.origin.replace("https://", "https:\\/\\/"));
-      // Inject webdriver spoof early
+      // Do NOT rewrite youtube.com URLs - keep original so YouTube JS sees correct domain for localStorage
+      // Only inject webdriver spoof
       const spoof = `<script>try{Object.defineProperty(navigator,'webdriver',{get:()=>false});window.chrome={runtime:{}};}catch(e){}</script>`;
       text = text.replace("<head>", `<head>${spoof}`);
       newHeaders.delete("Content-Length");
@@ -91,13 +97,11 @@ export default {
     }
     if (contentType.includes("application/json") || contentType.includes("text/javascript") || contentType.includes("application/javascript")) {
       let text = await response.text();
-      text = text.replaceAll(`https://${targetHostname}`, url.origin);
+      // Don't rewrite for API - keep youtube.com URLs, WebView will intercept via shouldInterceptRequest? Actually keep as is for now
       newHeaders.delete("Content-Length");
       return new Response(text, { status: response.status, headers: newHeaders });
     }
 
-    // For other content (images, etc), stream directly
-    // Need to handle body as stream
     return new Response(response.body, { status: response.status, headers: newHeaders });
   }
 }

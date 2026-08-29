@@ -60,6 +60,34 @@ public class MainActivity extends Activity {
         // Spoof webdriver before any page loads
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, android.webkit.WebResourceRequest request) {
+                String url = request.getUrl().toString();
+                // Proxy only YouTube API via Worker to bypass bot IP check, keep HTML on youtube.com domain
+                if (url.contains("youtube.com/youtubei/v1/") || url.contains("youtube.com/api/")) {
+                    try {
+                        String proxied = url.replace("https://www.youtube.com", WebViewHelper.PROXY_BASE);
+                        java.net.URL u = new java.net.URL(proxied);
+                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
+                        conn.setRequestMethod(request.getMethod());
+                        // Copy headers
+                        for (String h : request.getRequestHeaders().keySet()) {
+                            conn.setRequestProperty(h, request.getRequestHeaders().get(h));
+                        }
+                        conn.setRequestProperty("User-Agent", WebViewHelper.USER_AGENT);
+                        conn.setConnectTimeout(10000);
+                        conn.setReadTimeout(10000);
+                        conn.connect();
+                        String mime = conn.getContentType();
+                        if (mime == null) mime = "application/json";
+                        String enc = conn.getContentEncoding();
+                        return new android.webkit.WebResourceResponse(mime.split(";")[0], enc != null ? enc : "utf-8", conn.getInputStream());
+                    } catch (Exception e) {
+                        // fallback to original
+                    }
+                }
+                return super.shouldInterceptRequest(view, request);
+            }
+            @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 view.evaluateJavascript(WebViewHelper.BOT_SPOOF_JS, null);
             }

@@ -5,7 +5,8 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 
 public class WebViewHelper {
-    public static final String YT_TV_URL = "https://yt-tv-proxy.dvt-kisu.workers.dev/tv";
+    public static final String YT_TV_URL = "https://www.youtube.com/tv";
+    public static final String PROXY_BASE = "https://yt-tv-proxy.dvt-kisu.workers.dev";
     // TV UA with Cobalt/CrKey to look like real Google TV (bypass bot check better than plain Chrome)
     public static final String USER_AGENT = "Mozilla/5.0 (Linux; Android 11; AFTSS Build/RTM2.230615.001) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.48 Safari/537.36 CrKey/1.54 TV Cobalt/27.lts.2-qa";
     public static final String FALLBACK_URL = "https://m.youtube.com/?noapp=1";
