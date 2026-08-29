@@ -52,7 +52,7 @@ public class HomeFragment extends BrowseSupportFragment {
         }).start();
     }
 
-    private static class CardPresenter extends Presenter {
+    public static class CardPresenter extends Presenter {
         @Override
         public ViewHolder onCreateViewHolder(ViewGroup parent) {
             ImageCardView card = new ImageCardView(parent.getContext());
