@@ -4,7 +4,9 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.KeyEvent;
+import android.webkit.ConsoleMessage;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
@@ -15,9 +17,11 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 
 public class MainActivity extends Activity {
+    private static final String TAG = "TizenLite";
     private WebView webView;
     private TextView offlineView;
     private String userScript;
+    private int interceptCount = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -41,6 +45,11 @@ public class MainActivity extends Activity {
 
     private void load() {
         userScript = loadAsset("userScript.js");
+        Log.d(TAG, "=== DIAG load() ===");
+        Log.d(TAG, "DIAG WebView UA=" + WebViewHelper.USER_AGENT);
+        Log.d(TAG, "DIAG YT_URL=" + WebViewHelper.YT_TV_URL);
+        Log.d(TAG, "DIAG PROXY_BASE=" + WebViewHelper.PROXY_BASE);
+        Log.d(TAG, "DIAG WebView version=" + WebViewHelper.getWebViewMajorVersion(this));
         // Cookie + storage to avoid bot check (YouTube needs cookies)
         CookieManager cm = CookieManager.getInstance();
         cm.setAcceptCookie(true);
@@ -48,28 +57,29 @@ public class MainActivity extends Activity {
             cm.setAcceptThirdPartyCookies(webView, true);
             CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         }
+        Log.d(TAG, "DIAG cookies before load=" + cm.getCookie("https://www.youtube.com"));
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setUserAgentString(WebViewHelper.USER_AGENT);
-        // Enable mixed content & file access for leanback
         if (Build.VERSION.SDK_INT >= 21) s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         webView.addJavascriptInterface(new JsBridge(this), "TizenLite");
-        // Spoof webdriver before any page loads
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, android.webkit.WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                // Proxy only YouTube API via Worker to bypass bot IP check, keep HTML on youtube.com domain
-                if (url.contains("youtube.com/youtubei/v1/") || url.contains("youtube.com/api/")) {
+                boolean isApi = url.contains("youtube.com/youtubei/v1/") || url.contains("youtube.com/api/");
+                if (isApi) {
+                    interceptCount++;
+                    Log.d(TAG, "DIAG intercept #" + interceptCount + " url=" + url + " method=" + request.getMethod());
                     try {
                         String proxied = url.replace("https://www.youtube.com", WebViewHelper.PROXY_BASE);
+                        Log.d(TAG, "DIAG proxied=" + proxied);
                         java.net.URL u = new java.net.URL(proxied);
                         java.net.HttpURLConnection conn = (java.net.HttpURLConnection) u.openConnection();
                         conn.setRequestMethod(request.getMethod());
-                        // Copy headers
                         for (String h : request.getRequestHeaders().keySet()) {
                             conn.setRequestProperty(h, request.getRequestHeaders().get(h));
                         }
@@ -77,26 +87,37 @@ public class MainActivity extends Activity {
                         conn.setConnectTimeout(10000);
                         conn.setReadTimeout(10000);
                         conn.connect();
+                        int code = conn.getResponseCode();
+                        Log.d(TAG, "DIAG proxy response code=" + code + " for " + url);
                         String mime = conn.getContentType();
                         if (mime == null) mime = "application/json";
                         String enc = conn.getContentEncoding();
                         return new android.webkit.WebResourceResponse(mime.split(";")[0], enc != null ? enc : "utf-8", conn.getInputStream());
                     } catch (Exception e) {
-                        // fallback to original
+                        Log.e(TAG, "DIAG proxy failed for " + url + " err=" + e.getMessage(), e);
                     }
                 }
                 return super.shouldInterceptRequest(view, request);
             }
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                Log.d(TAG, "DIAG onPageStarted url=" + url);
                 view.evaluateJavascript(WebViewHelper.BOT_SPOOF_JS, null);
             }
             @Override
             public void onPageFinished(WebView view, String url) {
+                Log.d(TAG, "DIAG onPageFinished url=" + url + " title=" + view.getTitle() + " interceptCount=" + interceptCount);
+                Log.d(TAG, "DIAG cookies after load=" + CookieManager.getInstance().getCookie("https://www.youtube.com"));
                 view.evaluateJavascript(WebViewHelper.BOT_SPOOF_JS, null);
                 if (userScript != null) view.evaluateJavascript(userScript, null);
-                // Detect bot check page and offer fallback
-                view.evaluateJavascript("(function(){var t=document.body?document.body.innerText:'';if(t.includes('not a bot')||t.includes('Sign in to confirm')){return 'BOT_DETECTED';}return 'OK';})();", value -> {
+                view.evaluateJavascript("(function(){var t=document.documentElement ? document.documentElement.innerHTML : ''; var txt=document.body?document.body.innerText:''; return JSON.stringify({len:t.length, txt:txt.substring(0,800), url:location.href, hasCast:txt.includes('Ready to cast'), hasBot:txt.includes('not a bot')||txt.includes('Sign in to confirm'), title:document.title});})();", value -> {
+                    Log.d(TAG, "DIAG pageContent=" + value);
+                    if (value != null && (value.contains("Ready to cast") || value.contains("BOT_DETECTED") || value.contains("not a bot"))) {
+                        Log.w(TAG, "DIAG detected cast/bot screen!");
+                    }
+                });
+                view.evaluateJavascript("(function(){var t=document.body?document.body.innerText:'';if(t.includes('not a bot')||t.includes('Sign in to confirm')){return 'BOT_DETECTED';}if(t.includes('Ready to cast')){return 'CAST_SCREEN';}return 'OK';})();", value -> {
+                    Log.d(TAG, "DIAG screenCheck=" + value);
                     if (value != null && value.contains("BOT_DETECTED")) {
                         new AlertDialog.Builder(MainActivity.this)
                             .setTitle("YouTube bot check")
@@ -110,13 +131,24 @@ public class MainActivity extends Activity {
             }
             @Override
             public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                Log.e(TAG, "DIAG onReceivedError code=" + errorCode + " desc=" + description + " url=" + failingUrl);
                 offlineView.setVisibility(android.view.View.VISIBLE);
                 view.setVisibility(android.view.View.GONE);
             }
+            @Override
+            public void onReceivedHttpError(WebView view, android.webkit.WebResourceRequest request, android.webkit.WebResourceResponse errorResponse) {
+                Log.w(TAG, "DIAG onReceivedHttpError url=" + request.getUrl() + " code=" + errorResponse.getStatusCode());
+            }
         });
-        webView.setWebChromeClient(new WebChromeClient());
-        // Enable debugging for inspecting bot check
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage m) {
+                Log.d(TAG, "DIAG console [" + m.messageLevel() + "] " + m.message() + " -- " + m.sourceId() + ":" + m.lineNumber());
+                return super.onConsoleMessage(m);
+            }
+        });
         if (Build.VERSION.SDK_INT >= 19) WebView.setWebContentsDebuggingEnabled(true);
+        Log.d(TAG, "DIAG calling loadUrl=" + WebViewHelper.YT_TV_URL);
         webView.loadUrl(WebViewHelper.YT_TV_URL);
         webView.requestFocus();
     }
