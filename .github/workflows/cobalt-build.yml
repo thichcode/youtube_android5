@@ -46,14 +46,30 @@ jobs:
       - name: gclient sync (shallow)
         run: |
           cd TizenTubeCobalt
-          # Try gclient sync with target_os android, may take long
           echo 'solutions = [{"name":"src","url":"https://github.com/reisxd/TizenTubeCobalt.git","deps_file":".DEPS","managed":False,"custom_deps":{}}]' > .gclient
           echo 'target_os = ["android"]' >> .gclient
           gclient sync --no-history --shallow || echo "gclient sync partial, continue"
+          # Generate missing gclient_args.gni if not created
+          if [ ! -f build/config/gclient_args.gni ]; then
+            mkdir -p build/config
+            cat > build/config/gclient_args.gni << 'EOF'
+          # Generated for Cobalt Android 5 build
+          checkout_android = true
+          checkout_src_internal = false
+          checkout_nacl = false
+          checkout_fuchsia = false
+          EOF
+            cat build/config/gclient_args.gni
+          fi
+          ls -lh build/config/gclient_args.gni || true
 
       - name: gn gen
         run: |
           cd TizenTubeCobalt
+          # ensure gclient_args exists
+          if [ ! -f build/config/gclient_args.gni ]; then
+            echo 'checkout_android = true' > build/config/gclient_args.gni
+          fi
           gn gen out/cobalt --args='target_os="android" is_cobalt=true is_debug=false is_official_build=false use_goma=false'
 
       - name: Build cobalt_apk
