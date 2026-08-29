@@ -27,12 +27,12 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-    // APK filename = TizenTubeLite-v{versionName}.apk (matches git tag v1.0.1-lite)
+    // APK filename = TizenTubeLite-v{versionName}.apk (matches git tag v1.0.2-lite)
     applicationVariants.all { variant ->
         variant.outputs.all {
             def buildType = variant.buildType.name
             def ver = variant.versionName
-            // e.g. TizenTubeLite-v1.0.1-lite-debug.apk / TizenTubeLite-v1.0.1-lite-release.apk
+            // e.g. TizenTubeLite-v1.0.2-lite-debug.apk / TizenTubeLite-v1.0.2-lite-release.apk
             outputFileName = "TizenTubeLite-v${ver}-${buildType}.apk"
         }
     }
