@@ -64,10 +64,11 @@ jobs:
                       patched = manifest.replace(b'\x1a\x00\x00\x00', b'\x15\x00\x00\x00', 1)
                   if patched != manifest:
                       print("binary patch done")
-                      with zipfile.ZipFile(apk_out, 'w', compression=zipfile.ZIP_STORED) as zout:
+                      with zipfile.ZipFile(apk_out, 'w') as zout:
                           for item in zin.infolist():
                               data = patched if item.filename == 'AndroidManifest.xml' else zin.read(item.filename)
-                              zout.writestr(item, data)
+                              # preserve original compress type
+                              zout.writestr(item, data, compress_type=item.compress_type)
                       print("binary patch success")
                   else:
                       print("binary patch: no pattern, fail")
