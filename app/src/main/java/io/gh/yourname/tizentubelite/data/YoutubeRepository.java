@@ -334,7 +334,9 @@ public class YoutubeRepository {
         if (apiKey != null) rb.header("X-Goog-API-Key", apiKey);
         try (Response resp = client.newCall(rb.build()).execute()) {
             String txt = resp.body() != null ? resp.body().string() : "{}";
-            android.util.Log.d(TAG, "player " + (apiKey == null ? "TV" : "ANDROID") + " HTTP " + resp.code() + " len " + txt.length() + " gate=" + txt.contains("LOGIN_REQUIRED"));
+            String status = "?";
+            try { status = new JSONObject(txt).optJSONObject("playabilityStatus").optString("status", "?"); } catch (Exception ignored) {}
+            android.util.Log.d(TAG, "player " + (apiKey == null ? "TV" : "ANDROID") + " HTTP " + resp.code() + " len " + txt.length() + " status=" + status);
             JSONObject j = new JSONObject(txt);
             return pickStream(j);
         } catch (Exception e) {
@@ -348,20 +350,22 @@ public class YoutubeRepository {
             JSONObject streamingData = res.optJSONObject("streamingData");
             if (streamingData != null) {
                 JSONArray formats = streamingData.optJSONArray("formats");
-                JSONArray adaptive = streamingData.optJSONArray("adaptiveFormats");
-                String best = null;
-                if (adaptive != null) {
-                    for (int i = 0; i < adaptive.length(); i++) {
-                        JSONObject f = adaptive.optJSONObject(i);
+                // Progressive formats carry both audio+video for single-URL playback.
+                // Prefer itag 22 (720p) > 18 (360p) > first progressive format.
+                String fallback = null;
+                if (formats != null) {
+                    for (int i = 0; i < formats.length(); i++) {
+                        JSONObject f = formats.optJSONObject(i);
                         if (f == null) continue;
                         int itag = f.optInt("itag", 0);
                         String url = f.optString("url", "");
-                        if (itag == 137 && !url.isEmpty()) return url;
-                        if (itag == 136 && best == null && !url.isEmpty()) best = url;
+                        if (url.isEmpty()) continue;
+                        if (fallback == null) fallback = url;
+                        if (itag == 22) return url;
+                        if (itag == 18 && (fallback == null)) fallback = url;
                     }
                 }
-                if (best != null) return best;
-                if (formats != null && formats.length() > 0) return formats.optJSONObject(0).optString("url", "");
+                if (fallback != null) return fallback;
             }
         } catch (Exception ignored) {}
         return null;
