@@ -2,6 +2,25 @@ plugins {
     id 'com.android.application'
 }
 
+def loadSigning = {
+    def kf = rootProject.file('app/keystore.properties')
+    if (kf.exists()) {
+        def ks = new Properties()
+        kf.withInputStream { ks.load(it) }
+        return [file: rootProject.file("app/${ks.storeFile}"), pass: ks.storePassword,
+                alias: ks.keyAlias, keypass: ks.keyPassword]
+    }
+    def envPass = System.getenv('KEYSTORE_PASSWORD')
+    if (envPass != null) {
+        def cf = rootProject.file('app/ci-release.jks')
+        if (cf.exists()) {
+            return [file: cf, pass: envPass, alias: System.getenv('KEY_ALIAS'), keypass: System.getenv('KEY_PASSWORD')]
+        }
+    }
+    null
+}
+def signing = loadSigning()
+
 android {
     namespace 'io.gh.yourname.tizentubelite'
     compileSdk 34
@@ -13,11 +32,22 @@ versionCode 20
     versionName "2.0.0-native"
         ndk { abiFilters "armeabi-v7a" }
     }
+    signingConfigs {
+        release {
+            if (signing != null) {
+                storeFile signing.file
+                storePassword signing.pass
+                keyAlias signing.alias
+                keyPassword signing.keypass
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (signing != null) signingConfig signingConfigs.release
         }
         debug {
             minifyEnabled false
