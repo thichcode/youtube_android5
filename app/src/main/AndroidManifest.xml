@@ -34,5 +34,10 @@
             android:exported="false"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:hardwareAccelerated="true" />
+        <activity
+            android:name=".ui.SearchActivity"
+            android:exported="false"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:hardwareAccelerated="true" />
     </application>
 </manifest>

@@ -23,9 +23,15 @@ public class HomeFragment extends BrowseSupportFragment {
         setHeadersTransitionOnBackEnabled(true);
         rowsAdapter = new ArrayObjectAdapter(new ListRowPresenter());
         setAdapter(rowsAdapter);
+        // Show the search icon in the browse header (Leanback renders it when this listener is set)
+        setOnSearchClickedListener(searchOrb -> startActivity(new Intent(getActivity(), SearchActivity.class)));
         setOnItemViewClickedListener((itemViewHolder, item, rowViewHolder, row) -> {
             if (item instanceof Video) {
                 Video v = (Video) item;
+                if ("SEARCH".equals(v.id)) {
+                    startActivity(new Intent(getActivity(), SearchActivity.class));
+                    return;
+                }
                 Intent i = new Intent(getActivity(), PlayerActivity.class);
                 i.putExtra("videoId", v.id);
                 startActivity(i);
@@ -50,6 +56,7 @@ public class HomeFragment extends BrowseSupportFragment {
                 if (getActivity() == null) return;
                 final List<Section> fs = sections;
                 getActivity().runOnUiThread(() -> {
+                    rowsAdapter.add(makeSearchRow());
                     for (Section s : fs) {
                         ArrayObjectAdapter listRowAdapter = new ArrayObjectAdapter(new CardPresenter());
                         for (Video v : s.videos) listRowAdapter.add(v);
@@ -61,6 +68,12 @@ public class HomeFragment extends BrowseSupportFragment {
                 e.printStackTrace();
             }
         }).start();
+    }
+
+    private ListRow makeSearchRow() {
+        ArrayObjectAdapter a = new ArrayObjectAdapter(new CardPresenter());
+        a.add(new Video("SEARCH", "Search videos", "", 0));
+        return new ListRow(new HeaderItem("Search"), a);
     }
 
     public static class CardPresenter extends Presenter {
