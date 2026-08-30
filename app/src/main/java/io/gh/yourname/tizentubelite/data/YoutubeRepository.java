@@ -12,6 +12,11 @@ public class YoutubeRepository {
     private static final String BASE = "https://yt-tv-proxy.dvt-kisu.workers.dev";
     private static final String YT_DIRECT = "https://www.youtube.com";
     private static final String ANDROID_KEY = "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w";
+    private static final String ANDROID_UA = "com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip";
+    private static final String ANDROID_VR_UA = "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip";
+    private static final String BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+    private static String cachedVisitorData;
+    private static long visitorDataFetchedAt;
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
     private final OkHttpClient client = new OkHttpClient();
 
@@ -285,58 +290,83 @@ public class YoutubeRepository {
             ctx.put("contentCheckOk", true);
             ctx.put("racyCheckOk", true);
         } catch (Exception ignored) {}
-        // 1) Direct residential player (best for home box IP reputation)
-        String url = directPlayer(videoId, ctx);
-        if (url != null) return url;
-        // 2) Android client + API key direct
-        url = androidPlayerDirect(videoId);
-        if (url != null) return url;
-        // 3) Fallback through Worker proxy
+        // Signed-out playback needs a valid visitorData in the player body,
+        // otherwise YouTube answers LOGIN_REQUIRED ("not a bot").
+        // Verified 2026-08: ANDROID / ANDROID_VR clients return OK + itag 18
+        // (progressive, pot-exempt) with just visitorData — no cookies, no PoT.
+        String vis = getVisitorData();
+        if (!vis.isEmpty()) {
+            String url = androidPlayerDirect(videoId, vis, ANDROID_UA, "ANDROID", "21.26.364", 30, "Linux; U; Android 11");
+            if (url != null) return url;
+            url = androidPlayerDirect(videoId, vis, ANDROID_VR_UA, "ANDROID_VR", "1.65.10", 32, "Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1");
+            if (url != null) return url;
+        }
+        // Fallback through Worker proxy
         JSONObject res = post("/youtubei/v1/player", ctx);
-        url = pickStream(res);
+        String url = pickStream(res);
         if (url == null) android.util.Log.d(TAG, "worker player also returned no stream");
         return url;
     }
 
-    private String directPlayer(String videoId, JSONObject ctx) throws IOException {
-        return postTo(YT_DIRECT + "/youtubei/v1/player", ctx,
-                "Mozilla/5.0 (Linux; Android 11; AFTSS) AppleWebKit/537.36 CrKey/1.54 TV Cobalt/27.lts.2-qa",
-                null);
-    }
-
-    private String androidPlayerDirect(String videoId) throws IOException {
+    private String androidPlayerDirect(String videoId, String vis, String ua, String clientName, String clientVersion, int sdk, String osDesc) throws IOException {
         JSONObject body = new JSONObject();
         try {
             JSONObject client = new JSONObject()
-                    .put("clientName", "ANDROID")
-                    .put("clientVersion", "19.09.37")
-                    .put("androidSdkVersion", 28)
-                    .put("deviceModel", "Pixel 7")
+                    .put("clientName", clientName)
+                    .put("clientVersion", clientVersion)
+                    .put("androidSdkVersion", sdk)
                     .put("osName", "Android")
-                    .put("osVersion", "13")
+                    .put("osVersion", osDesc.contains("12L") ? "12L" : "11")
+                    .put("visitorData", vis)
                     .put("hl", "en").put("gl", "US");
             body.put("context", new JSONObject().put("client", client));
             body.put("videoId", videoId);
             body.put("contentCheckOk", true);
             body.put("racyCheckOk", true);
         } catch (Exception ignored) {}
-        return postTo(YT_DIRECT + "/youtubei/v1/player", body,
-                "com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip",
-                ANDROID_KEY);
+        return postTo(YT_DIRECT + "/youtubei/v1/player", body, ua, ANDROID_KEY, clientName, clientVersion, osDesc);
     }
 
-    private String postTo(String url, JSONObject body, String ua, String apiKey) throws IOException {
+    private String getVisitorData() {
+        long now = System.currentTimeMillis();
+        if (cachedVisitorData != null && now - visitorDataFetchedAt < 6L * 3600 * 1000) return cachedVisitorData;
+        try {
+            Request req = new Request.Builder()
+                    .url(YT_DIRECT + "/")
+                    .header("User-Agent", BROWSER_UA)
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .build();
+            String html;
+            try (Response resp = client.newCall(req).execute()) {
+                html = resp.body() != null ? resp.body().string() : "";
+            }
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"visitorData\":\"([^\"]{10,})\"").matcher(html);
+            if (m.find()) {
+                cachedVisitorData = m.group(1);
+                visitorDataFetchedAt = now;
+                android.util.Log.d(TAG, "visitorData fetched len=" + cachedVisitorData.length());
+                return cachedVisitorData;
+            }
+        } catch (Exception e) {
+            android.util.Log.d(TAG, "visitorData fetch failed: " + e);
+        }
+        return cachedVisitorData != null ? cachedVisitorData : "";
+    }
+
+    private String postTo(String url, JSONObject body, String ua, String apiKey, String clientName, String clientVersion, String osDesc) throws IOException {
         Request.Builder rb = new Request.Builder()
                 .url(url)
                 .post(RequestBody.create(body.toString(), JSON))
                 .header("User-Agent", ua)
                 .header("Origin", "https://www.youtube.com");
         if (apiKey != null) rb.header("X-Goog-API-Key", apiKey);
+        if (clientName != null) rb.header("X-YouTube-Client-Name", clientName.equals("ANDROID") ? "3" : "28");
+        if (clientVersion != null) rb.header("X-YouTube-Client-Version", clientVersion);
         try (Response resp = client.newCall(rb.build()).execute()) {
             String txt = resp.body() != null ? resp.body().string() : "{}";
             String status = "?";
             try { status = new JSONObject(txt).optJSONObject("playabilityStatus").optString("status", "?"); } catch (Exception ignored) {}
-            android.util.Log.d(TAG, "player " + (apiKey == null ? "TV" : "ANDROID") + " HTTP " + resp.code() + " len " + txt.length() + " status=" + status);
+            android.util.Log.d(TAG, "player " + clientName + " HTTP " + resp.code() + " len " + txt.length() + " status=" + status);
             JSONObject j = new JSONObject(txt);
             return pickStream(j);
         } catch (Exception e) {
