@@ -95,8 +95,22 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=v$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Create git tag (API)
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "refs/tags/$TAG$"; then
+            echo "Tag $TAG already exists, skip"
+          else
+            SHA=$(git rev-parse HEAD)
+            echo "Creating tag $TAG at $SHA"
+            curl -s -X POST \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/git/refs" \
+              -d "{\"ref\":\"refs/tags/$TAG\",\"sha\":\"$SHA\"}"
+          fi
+
       - name: Create Release
-        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
@@ -105,31 +119,15 @@ jobs:
             ## TizenTube Lite ${{ steps.version.outputs.version }}
             - Android 5.0+ (API 21), armeabi-v7a only
             - Native Leanback UI (browse + search) + ExoPlayer playback
+            - Signed-out playback via ANDROID client + visitorData (pot-exempt itag 18)
             - Ad-block server-side (JSON response stripping)
-            - Fetches Home/Search via Cloudflare Worker; stream URLs fetched directly from residential IP
+            - Fetches Home/Search via Cloudflare Worker; stream URLs fetched from residential IP
           files: |
             app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/release/*.apk
           fail_on_unmatched_files: false
           generate_release_notes: true
+          update_release_body: true
+          overwrite: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  auto-tag:
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - uses: actions/checkout@v4
-      - name: Auto tag
-        run: |
-          VERSION=$(grep versionName app/build.gradle | sed 's/.*"\(.*\)".*/\1/')
-          TAG="v$VERSION"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG exists, skip"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git tag "$TAG"
-            git push origin "$TAG"
-          fi
