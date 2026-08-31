@@ -18,7 +18,11 @@ public class YoutubeRepository {
     private static String cachedVisitorData;
     private static long visitorDataFetchedAt;
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
-    private final OkHttpClient client = new OkHttpClient();
+    private final OkHttpClient client = new OkHttpClient.Builder()
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .build();
 
     public static JSONObject stripAds(JSONObject r) {
         try {
@@ -98,20 +102,53 @@ public class YoutubeRepository {
                 .build();
         try (Response resp = client.newCall(req).execute()) {
             String txt = resp.body() != null ? resp.body().string() : "{}";
+            String trim = txt.trim();
+            if (trim.startsWith("<") || trim.contains("Sorry...") || trim.contains("automated queries")) {
+                throw new IOException("Worker blocked by YouTube (bot detection html, len=" + txt.length() + ")");
+            }
             JSONObject j = new JSONObject(txt);
             return stripAds(j);
-        } catch (Exception e) {
+        } catch (IOException e) { throw e; }
+        catch (Exception e) {
             throw new IOException(e);
         }
     }
 
+    private JSONObject postDirect(String ytPath, JSONObject body, String ua, String apiKey, String clientName, String clientVersion) throws IOException {
+        Request.Builder rb = new Request.Builder()
+                .url(YT_DIRECT + ytPath)
+                .post(RequestBody.create(body.toString(), JSON))
+                .header("User-Agent", ua)
+                .header("Origin", "https://www.youtube.com");
+        if (apiKey != null) rb.header("X-Goog-Api-Key", apiKey);
+        if (clientName != null) rb.header("X-YouTube-Client-Name", clientName.equals("ANDROID") ? "3" : clientName.equals("ANDROID_VR") ? "28" : "1");
+        if (clientVersion != null) rb.header("X-YouTube-Client-Version", clientVersion);
+        try (Response resp = client.newCall(rb.build()).execute()) {
+            String txt = resp.body() != null ? resp.body().string() : "{}";
+            if (txt.trim().startsWith("<")) throw new IOException("Direct YT returned html");
+            return new JSONObject(txt);
+        } catch (IOException e) { throw e; }
+        catch (Exception e) { throw new IOException(e); }
+    }
+
     public List<Section> browse() throws IOException {
-        JSONObject ctx = new JSONObject();
+        // Try Worker first, fallback to direct if blocked/timeout
         try {
+            JSONObject ctx = new JSONObject();
             ctx.put("context", new JSONObject().put("client", new JSONObject().put("clientName", "TVHTML5").put("clientVersion", "7.20240701.00.00")));
-        } catch (Exception ignored) {}
-        JSONObject res = post("/youtubei/v1/browse", ctx);
-        // parse sections
+            JSONObject res = post("/youtubei/v1/browse", ctx);
+            List<Section> out = parseBrowse(res);
+            if (out != null && !out.isEmpty()) return out;
+            // Worker returned empty (signed-out nudge) -> fallback to search-based sections handled by caller
+            return out;
+        } catch (Exception e) {
+            android.util.Log.d(TAG, "browse via Worker failed: " + e.getMessage() + ", fallback not needed (caller will search)");
+            throw new IOException(e);
+        }
+    }
+
+    private List<Section> parseBrowse(JSONObject res) {
+        // extracted from original browse()
         List<Section> out = new ArrayList<>();
         try {
             JSONObject contents = res.optJSONObject("contents");
@@ -170,23 +207,52 @@ public class YoutubeRepository {
     }
 
     public List<Video> search(String q) throws IOException {
-        JSONObject body = new JSONObject();
+        // Try Worker first
         try {
+            JSONObject body = new JSONObject();
             body.put("context", new JSONObject().put("client", new JSONObject()
                     .put("clientName", "TVHTML5")
                     .put("clientVersion", "7.20240701.00.00")
                     .put("hl", "en").put("gl", "US").put("platform", "TV")));
             body.put("query", q);
+            JSONObject res = post("/youtubei/v1/search", body);
+            List<Video> out = parseSearchResults(res);
+            if (out != null && !out.isEmpty()) return out;
+            // empty -> try direct
+        } catch (Exception e) {
+            android.util.Log.d(TAG, "search via Worker failed for '" + q + "': " + e.getMessage());
+        }
+        // Fallback: direct ANDROID search (residential IP, not blocked)
+        return searchDirect(q);
+    }
+
+    private List<Video> searchDirect(String q) throws IOException {
+        String vis = getVisitorData();
+        if (vis.isEmpty()) vis = "CgtKMTdGdjlyTVltMCiuidPUBjIKCgJISxIEGgAgSA%3D%3D"; // fallback
+        JSONObject body = new JSONObject();
+        try {
+            JSONObject client = new JSONObject()
+                    .put("clientName", "ANDROID")
+                    .put("clientVersion", "21.26.364")
+                    .put("androidSdkVersion", 30)
+                    .put("osName", "Android")
+                    .put("osVersion", "11")
+                    .put("visitorData", vis)
+                    .put("hl", "en").put("gl", "US");
+            body.put("context", new JSONObject().put("client", client));
+            body.put("query", q);
         } catch (Exception ignored) {}
-        JSONObject res = post("/youtubei/v1/search", body);
-        return parseSearchResults(res);
+        JSONObject res = postDirect("/youtubei/v1/search", body, ANDROID_UA, ANDROID_KEY, "ANDROID", "21.26.364");
+        List<Video> out = parseSearchResults(res);
+        android.util.Log.d(TAG, "searchDirect '" + q + "' got " + out.size() + " videos");
+        return out;
     }
 
     public static List<Video> parseSearchResults(JSONObject res) {
         List<Video> out = new ArrayList<>();
-        // TV search: contents.sectionListRenderer.contents[].shelfRenderer
-        //            .content.horizontalListRenderer.items[].lockupViewModel (new)
-        //            ... or items[].tileRenderer (legacy)
+        // Supports two layouts:
+        // 1) TV: contents.sectionListRenderer.contents[].shelfRenderer.content.horizontalListRenderer.items[] (tileRenderer/lockupViewModel)
+        // 2) ANDROID: contents.sectionListRenderer.contents[].itemSectionRenderer.contents[] (videoRenderer/compactVideoRenderer)
         try {
             JSONObject contents = res.optJSONObject("contents");
             if (contents != null) {
@@ -197,8 +263,9 @@ public class YoutubeRepository {
                         for (int i = 0; i < arr.length(); i++) {
                             JSONObject sec = arr.optJSONObject(i);
                             if (sec == null) continue;
+                            // --- TV layout: shelfRenderer ---
                             JSONObject shelf = sec.optJSONObject("shelfRenderer");
-                            if (shelf == null) continue;
+                            if (shelf != null) {
                             JSONObject cont = shelf.optJSONObject("content");
                             if (cont != null) {
                                 JSONObject horiz = cont.optJSONObject("horizontalListRenderer");
@@ -245,14 +312,48 @@ public class YoutubeRepository {
                                         } catch (Exception ignored) {}
                                     }
                                     if (id == null || id.isEmpty()) {
-                                        // nested watchEndpoint command
                                         try {
                                             String s = searchForVideoId(item);
                                             if (s != null) id = s;
                                         } catch (Exception ignored) {}
                                     }
-                                    // only real videos have 11-char ids (playlists/mixes use RDAT.. etc)
                                     if (id != null && id.length() == 11) out.add(new Video(id, t != null ? t : "", thumb != null ? thumb : "", 0));
+                                }
+                            }
+                            } else {
+                                // ANDROID layout: itemSectionRenderer -> compactVideoRenderer / videoRenderer
+                                JSONObject itemSec = sec.optJSONObject("itemSectionRenderer");
+                                if (itemSec != null) {
+                                    JSONArray isContents = itemSec.optJSONArray("contents");
+                                    if (isContents != null) {
+                                        for (int k = 0; k < isContents.length(); k++) {
+                                            JSONObject c = isContents.optJSONObject(k);
+                                            if (c == null) continue;
+                                            JSONObject vr = c.optJSONObject("videoRenderer");
+                                            JSONObject cvr = c.optJSONObject("compactVideoRenderer");
+                                            JSONObject r = vr != null ? vr : cvr;
+                                            if (r == null) continue;
+                                            String id = r.optString("videoId", "");
+                                            String t = "";
+                                            try {
+                                                JSONObject titleObj = r.optJSONObject("title");
+                                                if (titleObj != null) {
+                                                    JSONArray runs = titleObj.optJSONArray("runs");
+                                                    if (runs != null && runs.length() > 0) t = runs.optJSONObject(0).optString("text", "");
+                                                    else t = titleObj.optString("simpleText", "");
+                                                }
+                                            } catch (Exception ignored2) {}
+                                            String thumb = "";
+                                            try {
+                                                JSONObject thumbObj = r.optJSONObject("thumbnail");
+                                                if (thumbObj != null) {
+                                                    JSONArray ths = thumbObj.optJSONArray("thumbnails");
+                                                    if (ths != null && ths.length() > 0) thumb = ths.optJSONObject(ths.length()-1).optString("url", "");
+                                                }
+                                            } catch (Exception ignored2) {}
+                                            if (id != null && id.length() == 11) out.add(new Video(id, t, thumb, 0));
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -375,29 +476,137 @@ public class YoutubeRepository {
         }
     }
 
-    private String pickStream(JSONObject res) {
+    // ---- Adaptive playback support ----
+    public static class Stream {
+        public int itag;
+        public String quality;
+        public int bitrate;
+        public String mime;
+        public String url;
+        public Stream(int itag, String q, int br, String mime, String url) { this.itag=itag; this.quality=q; this.bitrate=br; this.mime=mime; this.url=url; }
+    }
+    public static class PlaybackInfo {
+        public String progressiveUrl;
+        public java.util.List<Stream> videoStreams = new ArrayList<>();
+        public java.util.List<Stream> audioStreams = new ArrayList<>();
+        public String hlsManifestUrl;
+        public String dashManifestUrl;
+        public String serverAbrStreamingUrl;
+        public boolean hasAdaptive() { return !videoStreams.isEmpty(); }
+    }
+
+    public PlaybackInfo getPlaybackInfo(String videoId) throws IOException {
+        String vis = getVisitorData();
+        // Prefer ANDROID_VR first because it returns adaptive URLs with actual urls (720p), ANDROID returns only 360p progressive
+        if (!vis.isEmpty()) {
+            JSONObject j = getPlayerJson(videoId, vis, ANDROID_VR_UA, "ANDROID_VR", "1.65.10", 32, "Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1");
+            if (j != null) {
+                PlaybackInfo pi = parsePlaybackInfo(j);
+                if (pi != null && (pi.progressiveUrl != null || pi.hasAdaptive())) return pi;
+            }
+            j = getPlayerJson(videoId, vis, ANDROID_UA, "ANDROID", "21.26.364", 30, "Linux; U; Android 11");
+            if (j != null) {
+                PlaybackInfo pi = parsePlaybackInfo(j);
+                if (pi != null && (pi.progressiveUrl != null || pi.hasAdaptive())) return pi;
+            }
+        }
+        // Worker fallback (TVHTML5) - may be UNPLAYABLE but try
         try {
-            JSONObject streamingData = res.optJSONObject("streamingData");
-            if (streamingData != null) {
-                JSONArray formats = streamingData.optJSONArray("formats");
-                // Progressive formats carry both audio+video for single-URL playback.
-                // Prefer itag 22 (720p) > 18 (360p) > first progressive format.
-                String fallback = null;
-                if (formats != null) {
-                    for (int i = 0; i < formats.length(); i++) {
-                        JSONObject f = formats.optJSONObject(i);
-                        if (f == null) continue;
-                        int itag = f.optInt("itag", 0);
-                        String url = f.optString("url", "");
-                        if (url.isEmpty()) continue;
-                        if (fallback == null) fallback = url;
-                        if (itag == 22) return url;
-                        if (itag == 18 && (fallback == null)) fallback = url;
-                    }
+            JSONObject ctx = new JSONObject();
+            ctx.put("context", new JSONObject().put("client", new JSONObject().put("clientName", "TVHTML5").put("clientVersion", "7.20240701.00.00").put("hl","en").put("gl","US").put("platform","TV")));
+            ctx.put("videoId", videoId); ctx.put("contentCheckOk", true); ctx.put("racyCheckOk", true);
+            JSONObject res = post("/youtubei/v1/player", ctx);
+            PlaybackInfo pi = parsePlaybackInfo(res);
+            if (pi != null && (pi.progressiveUrl != null || pi.hasAdaptive())) return pi;
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private JSONObject getPlayerJson(String videoId, String vis, String ua, String clientName, String clientVersion, int sdk, String osDesc) throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            JSONObject client = new JSONObject()
+                    .put("clientName", clientName)
+                    .put("clientVersion", clientVersion)
+                    .put("androidSdkVersion", sdk)
+                    .put("osName", "Android")
+                    .put("osVersion", osDesc.contains("12L") ? "12L" : "11")
+                    .put("visitorData", vis)
+                    .put("hl", "en").put("gl", "US");
+            body.put("context", new JSONObject().put("client", client));
+            body.put("videoId", videoId);
+            body.put("contentCheckOk", true);
+            body.put("racyCheckOk", true);
+        } catch (Exception ignored) {}
+        Request.Builder rb = new Request.Builder()
+                .url(YT_DIRECT + "/youtubei/v1/player")
+                .post(RequestBody.create(body.toString(), JSON))
+                .header("User-Agent", ua)
+                .header("Origin", "https://www.youtube.com");
+        rb.header("X-Goog-Api-Key", ANDROID_KEY);
+        rb.header("X-YouTube-Client-Name", clientName.equals("ANDROID") ? "3" : "28");
+        rb.header("X-YouTube-Client-Version", clientVersion);
+        try (Response resp = client.newCall(rb.build()).execute()) {
+            String txt = resp.body() != null ? resp.body().string() : "{}";
+            String status = "?";
+            try { status = new JSONObject(txt).optJSONObject("playabilityStatus").optString("status", "?"); } catch (Exception ignored2) {}
+            android.util.Log.d(TAG, "playerJson " + clientName + " HTTP " + resp.code() + " len " + txt.length() + " status=" + status);
+            return new JSONObject(txt);
+        } catch (Exception e) {
+            android.util.Log.d(TAG, "playerJson direct failed: " + e);
+            return null;
+        }
+    }
+
+    private PlaybackInfo parsePlaybackInfo(JSONObject res) {
+        PlaybackInfo pi = new PlaybackInfo();
+        try {
+            JSONObject sd = res.optJSONObject("streamingData");
+            if (sd == null) return pi;
+            pi.hlsManifestUrl = sd.optString("hlsManifestUrl", null);
+            pi.dashManifestUrl = sd.optString("dashManifestUrl", null);
+            pi.serverAbrStreamingUrl = sd.optString("serverAbrStreamingUrl", null);
+            JSONArray formats = sd.optJSONArray("formats");
+            String fallback = null;
+            if (formats != null) {
+                for (int i = 0; i < formats.length(); i++) {
+                    JSONObject f = formats.optJSONObject(i);
+                    if (f == null) continue;
+                    String url = f.optString("url", "");
+                    if (url.isEmpty()) continue;
+                    if (fallback == null) fallback = url;
+                    if (f.optInt("itag",0)==22) { fallback = url; break; }
+                    if (f.optInt("itag",0)==18) fallback = url;
                 }
-                if (fallback != null) return fallback;
+            }
+            pi.progressiveUrl = fallback;
+            JSONArray af = sd.optJSONArray("adaptiveFormats");
+            if (af != null) {
+                for (int i = 0; i < af.length(); i++) {
+                    JSONObject f = af.optJSONObject(i);
+                    if (f == null) continue;
+                    String url = f.optString("url", "");
+                    if (url.isEmpty()) continue;
+                    String mime = f.optString("mimeType", "");
+                    int itag = f.optInt("itag", 0);
+                    String q = f.optString("qualityLabel", "");
+                    int br = f.optInt("bitrate", 0);
+                    Stream s = new Stream(itag, q, br, mime, url);
+                    if (mime.contains("video")) pi.videoStreams.add(s);
+                    else if (mime.contains("audio")) pi.audioStreams.add(s);
+                }
+                // sort video by bitrate desc for quality selection
+                java.util.Collections.sort(pi.videoStreams, (a,b) -> Integer.compare(b.bitrate, a.bitrate));
+                java.util.Collections.sort(pi.audioStreams, (a,b) -> Integer.compare(b.bitrate, a.bitrate));
             }
         } catch (Exception ignored) {}
+        return pi;
+    }
+
+    private String pickStream(JSONObject res) {
+        PlaybackInfo pi = parsePlaybackInfo(res);
+        if (pi.progressiveUrl != null) return pi.progressiveUrl;
+        // fallback to best adaptive video+audio not supported in single-url mode, return null
         return null;
     }
 }

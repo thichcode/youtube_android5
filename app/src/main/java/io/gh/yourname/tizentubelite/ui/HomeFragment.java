@@ -42,31 +42,45 @@ public class HomeFragment extends BrowseSupportFragment {
 
     private void load() {
         new Thread(() -> {
+            YoutubeRepository repo = new YoutubeRepository();
+            List<Section> sections = new ArrayList<>();
             try {
-                YoutubeRepository repo = new YoutubeRepository();
-                List<Section> sections = repo.browse();
-                if (sections == null || sections.isEmpty()) {
-                    sections = new ArrayList<>();
-                    String[] defaults = {"Trending", "Music", "Movies on YouTube", "Gaming"};
-                    for (String q : defaults) {
+                List<Section> b = null;
+                try { b = repo.browse(); } catch (Exception e) { android.util.Log.d("TizenTubeHome","browse failed: "+e); }
+                if (b != null && !b.isEmpty()) sections.addAll(b);
+            } catch (Exception ignored) {}
+            if (sections.isEmpty()) {
+                String[] defaults = {"Trending", "Music", "Movies on YouTube", "Gaming"};
+                for (String q : defaults) {
+                    try {
                         List<Video> vids = repo.search(q);
-                        if (!vids.isEmpty()) sections.add(new Section(q, vids));
+                        android.util.Log.d("TizenTubeHome","search '"+q+"' got "+(vids==null?0:vids.size()));
+                        if (vids != null && !vids.isEmpty()) sections.add(new Section(q, vids));
+                    } catch (Exception e) {
+                        android.util.Log.d("TizenTubeHome","search '"+q+"' failed: "+e.getMessage());
                     }
                 }
-                if (getActivity() == null) return;
-                final List<Section> fs = sections;
-                getActivity().runOnUiThread(() -> {
-                    rowsAdapter.add(makeSearchRow());
+            }
+            android.util.Log.d("TizenTubeHome","final sections="+sections.size());
+            if (getActivity() == null) return;
+            final List<Section> fs = sections;
+            getActivity().runOnUiThread(() -> {
+                rowsAdapter.clear();
+                rowsAdapter.add(makeSearchRow());
+                if (fs.isEmpty()) {
+                    // show empty hint row so user knows to use Search
+                    ArrayObjectAdapter hint = new ArrayObjectAdapter(new CardPresenter());
+                    hint.add(new Video("SEARCH", "No trending available - press Search", "", 0));
+                    rowsAdapter.add(new ListRow(new HeaderItem("Explore"), hint));
+                } else {
                     for (Section s : fs) {
                         ArrayObjectAdapter listRowAdapter = new ArrayObjectAdapter(new CardPresenter());
                         for (Video v : s.videos) listRowAdapter.add(v);
                         HeaderItem header = new HeaderItem(s.title);
                         rowsAdapter.add(new ListRow(header, listRowAdapter));
                     }
-                });
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+                }
+            });
         }).start();
     }
 
