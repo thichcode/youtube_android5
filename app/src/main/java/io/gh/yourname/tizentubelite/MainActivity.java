@@ -118,6 +118,34 @@ public class MainActivity extends Activity {
         webView.requestFocus();
     }
 
+    private boolean botDialogShowing = false;
+    public void onBotCheckDetected() {
+        runOnUiThread(() -> {
+            if (botDialogShowing || isFinishing()) return;
+            botDialogShowing = true;
+            new AlertDialog.Builder(this)
+                .setTitle("YouTube chặn bot")
+                .setMessage("YouTube yêu cầu xác minh \"I'm not a robot\". Chọn cách xử lý:")
+                .setPositiveButton("Thử lại (xóa cookie)", (d,w) -> {
+                    botDialogShowing = false;
+                    CookieManager cm = CookieManager.getInstance();
+                    cm.removeAllCookies(null);
+                    cm.flush();
+                    webView.clearCache(true);
+                    webView.clearHistory();
+                    webView.loadUrl(WebViewHelper.YT_TV_URL);
+                })
+                .setNegativeButton("Mở m.youtube.com", (d,w) -> {
+                    botDialogShowing = false;
+                    webView.loadUrl("https://m.youtube.com/?persist_app=1&noapp=1");
+                })
+                .setNeutralButton("Đóng (ẩn overlay)", (d,w) -> botDialogShowing = false)
+                .setOnDismissListener(d -> botDialogShowing = false)
+                .setCancelable(false)
+                .show();
+        });
+    }
+
     private String loadAsset(String name) {
         try (BufferedReader r = new BufferedReader(new InputStreamReader(getAssets().open(name)))) {
             StringBuilder sb = new StringBuilder(); String line;

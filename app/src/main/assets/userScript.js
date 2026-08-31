@@ -15,7 +15,8 @@
         } catch(e) {}
     })();
 
-    // Bot check detection — hide overlay, no reload (reload causes skeleton)
+    // Bot check detection — notify native, hide overlay
+    var _botNotified = false;
     function detectBotCheck() {
         var txt = document.body ? document.body.innerText : '';
         var html = document.documentElement ? document.documentElement.innerHTML : '';
@@ -27,19 +28,12 @@
             || txt.indexOf('verify you are human') !== -1
             || html.indexOf('sb-captcha-container') !== -1;
         if (isBot) {
-            console.log('[TizenTubeLite] BOT CHECK detected — hiding overlay, not reloading');
-            // hide captcha containers instead of reload (reload -> skeleton)
-            document.querySelectorAll('[id*="captcha"],[class*="captcha"],[id*="recaptcha"],[class*="recaptcha"],[id*="unusual"] , [class*="unusual"]').forEach(function(e){ e.style.display='none'; try{e.remove();}catch(_){} });
-            // click verify if present, but don't reload
-            var btns = document.querySelectorAll('button, [role="button"], input[type="submit"]');
-            for (var i = 0; i < btns.length; i++) {
-                var b = btns[i];
-                var t = (b.textContent || b.value || '').toLowerCase();
-                if (t.indexOf('verify') !== -1 || t.indexOf('confirm') !== -1 || t.indexOf('continue') !== -1) {
-                    console.log('[TizenTubeLite] clicking bot-check button: ' + t);
-                    try{b.click();}catch(e){}
-                    break;
-                }
+            console.log('[TizenTubeLite] BOT CHECK detected');
+            document.querySelectorAll('[id*="captcha"],[class*="captcha"],[id*="recaptcha"],[class*="recaptcha"]').forEach(function(e){ e.style.display='none'; });
+            if (!_botNotified) {
+                _botNotified = true;
+                try { if (window.TizenLite && window.TizenLite.onBotCheck) window.TizenLite.onBotCheck(); } catch(e){}
+                setTimeout(function(){ _botNotified = false; }, 15000);
             }
         }
     }

@@ -9,12 +9,15 @@ public class JsBridge {
     public JsBridge(Context ctx) { this.ctx = ctx; }
 
     @JavascriptInterface
-    public void onAdBlocked(String msg) {
-        // no-op, just for logging via JS
-    }
+    public void onAdBlocked(String msg) { }
 
     @JavascriptInterface
     public void showToast(String msg) {
         Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show();
+    }
+
+    @JavascriptInterface
+    public void onBotCheck() {
+        if (ctx instanceof MainActivity) ((MainActivity) ctx).onBotCheckDetected();
     }
 }
