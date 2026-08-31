@@ -497,14 +497,15 @@ public class YoutubeRepository {
 
     public PlaybackInfo getPlaybackInfo(String videoId) throws IOException {
         String vis = getVisitorData();
-        // Prefer ANDROID_VR first because it returns adaptive URLs with actual urls (720p), ANDROID returns only 360p progressive
+        // ANDROID client (not VR) returns progressive URLs that work without IP validation
         if (!vis.isEmpty()) {
-            JSONObject j = getPlayerJson(videoId, vis, ANDROID_VR_UA, "ANDROID_VR", "1.65.10", 32, "Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1");
+            JSONObject j = getPlayerJson(videoId, vis, ANDROID_UA, "ANDROID", "21.26.364", 30, "Linux; U; Android 11");
             if (j != null) {
                 PlaybackInfo pi = parsePlaybackInfo(j);
-                if (pi != null && (pi.progressiveUrl != null || pi.hasAdaptive())) return pi;
+                if (pi != null && pi.progressiveUrl != null) return pi;
             }
-            j = getPlayerJson(videoId, vis, ANDROID_UA, "ANDROID", "21.26.364", 30, "Linux; U; Android 11");
+            // ANDROID_VR has adaptive (720p) but URLs often 403 on download
+            j = getPlayerJson(videoId, vis, ANDROID_VR_UA, "ANDROID_VR", "1.65.10", 32, "Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1");
             if (j != null) {
                 PlaybackInfo pi = parsePlaybackInfo(j);
                 if (pi != null && (pi.progressiveUrl != null || pi.hasAdaptive())) return pi;

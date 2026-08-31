@@ -16,6 +16,7 @@ import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultDataSource;
+import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
 import io.gh.yourname.tizentubelite.R;
 import io.gh.yourname.tizentubelite.data.YoutubeRepository;
 
@@ -34,27 +35,27 @@ public class PlayerActivity extends Activity {
         if (videoId == null) { finish(); return; }
         player = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(player);
-        player.addListener(new com.google.android.exoplayer2.Player.Listener() {
-            @Override public void onPlayerError(com.google.android.exoplayer2.PlaybackException error) {
-                android.util.Log.e("TizenTubePlayer","player error: "+error.getMessage(), error);
-                if (!triedProgressiveFallback && playbackInfo != null && playbackInfo.progressiveUrl != null) {
-                    triedProgressiveFallback = true;
-                    runOnUiThread(() -> {
-                        Toast.makeText(PlayerActivity.this, "Adaptive failed, fallback 360p", Toast.LENGTH_SHORT).show();
-                        playWithQuality("progressive");
-                    });
-                }
-            }
-        });
         new Thread(() -> {
             try {
-                playbackInfo = new YoutubeRepository().getPlaybackInfo(videoId);
+                YoutubeRepository repo = new YoutubeRepository();
+                playbackInfo = repo.getPlaybackInfo(videoId);
                 if (playbackInfo == null || (playbackInfo.progressiveUrl == null && !playbackInfo.hasAdaptive())) {
                     runOnUiThread(() -> Toast.makeText(this, "No stream found", Toast.LENGTH_SHORT).show());
                     return;
                 }
+                android.util.Log.d("TizenTubePlayer","progressive="+(playbackInfo.progressiveUrl!=null)+" adaptive="+playbackInfo.hasAdaptive()
+                    +" hls="+playbackInfo.hlsManifestUrl+" dash="+playbackInfo.dashManifestUrl
+                    +" videoCount="+playbackInfo.videoStreams.size()+" audioCount="+playbackInfo.audioStreams.size());
                 triedProgressiveFallback = false;
-                runOnUiThread(() -> playWithQuality(autoSelectQuality()));
+                // Priority: HLS > DASH > progressive > adaptive
+                if (playbackInfo.hlsManifestUrl != null && !playbackInfo.hlsManifestUrl.isEmpty()) {
+                    final String hls = playbackInfo.hlsManifestUrl;
+                    runOnUiThread(() -> playHls(hls));
+                } else if (playbackInfo.progressiveUrl != null) {
+                    runOnUiThread(() -> playWithQuality("progressive"));
+                } else {
+                    runOnUiThread(() -> playWithQuality(autoSelectQuality()));
+                }
             } catch (Exception e) {
                 runOnUiThread(() -> Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show());
             }
@@ -62,29 +63,35 @@ public class PlayerActivity extends Activity {
     }
 
     private String autoSelectQuality() {
-        if (playbackInfo == null || playbackInfo.videoStreams.isEmpty()) return "progressive";
-        // Estimate bandwidth via ConnectivityManager (simple heuristic for TV box)
-        try {
-            ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-            NetworkInfo ni = cm != null ? cm.getActiveNetworkInfo() : null;
-            boolean isWifi = ni != null && ni.getType() == ConnectivityManager.TYPE_WIFI;
-            // On ethernet/wifi pick highest, on mobile pick 360p
-            if (isWifi) {
-                for (YoutubeRepository.Stream s : playbackInfo.videoStreams) if ("720p".equals(s.quality)) return s.quality;
-                return playbackInfo.videoStreams.get(0).quality;
-            } else {
-                // prefer 360p for slower
-                for (YoutubeRepository.Stream s : playbackInfo.videoStreams) if ("360p".equals(s.quality)) return s.quality;
-                return playbackInfo.videoStreams.get(0).quality;
-            }
-        } catch (Exception e) { return playbackInfo.videoStreams.get(0).quality; }
+        return "progressive";
     }
 
     private boolean triedProgressiveFallback = false;
+    private static final String STREAM_UA = "com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip";
+
+    private void playHls(String url) {
+        DataSource.Factory dsf = createStreamDataSource();
+        com.google.android.exoplayer2.source.MediaSource ms =
+            new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(dsf)
+                .createMediaSource(MediaItem.fromUri(url));
+        player.setMediaSource(ms);
+        player.prepare();
+        player.play();
+        Toast.makeText(this, "Playing HLS stream", Toast.LENGTH_SHORT).show();
+    }
+
+    private DataSource.Factory createStreamDataSource() {
+        return new DataSource.Factory() {
+            @Override
+            public DataSource createDataSource() {
+                return new DefaultHttpDataSource(STREAM_UA, 15000, 15000);
+            }
+        };
+    }
     private void playWithQuality(String quality) {
         if (playbackInfo == null) return;
         triedProgressiveFallback = false;
-        DataSource.Factory dsf = new DefaultDataSource.Factory(this);
+        DataSource.Factory dsf = createStreamDataSource();
         MediaSource ms = null;
         if ("progressive".equals(quality) || playbackInfo.videoStreams.isEmpty()) {
             String url = playbackInfo.progressiveUrl;
@@ -127,6 +134,25 @@ public class PlayerActivity extends Activity {
         player.setMediaSource(ms);
         player.prepare();
         player.play();
+        // If adaptive was requested but failed, fallback to progressive
+        player.addListener(new com.google.android.exoplayer2.Player.Listener() {
+            @Override public void onPlayerError(com.google.android.exoplayer2.PlaybackException error) {
+                android.util.Log.e("TizenTubePlayer","player error: "+error.getMessage(), error);
+                if (!triedProgressiveFallback) {
+                    triedProgressiveFallback = true;
+                    runOnUiThread(() -> {
+                        if (playbackInfo.progressiveUrl != null && !"progressive".equals(quality)) {
+                            Toast.makeText(PlayerActivity.this, "Adaptive failed, fallback 360p", Toast.LENGTH_SHORT).show();
+                            playWithQuality("progressive");
+                        } else if (!playbackInfo.hasAdaptive()) {
+                            Toast.makeText(PlayerActivity.this, "Playback error: " + error.getMessage(), Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(PlayerActivity.this, "Playback failed", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+            }
+        });
     }
 
     @Override
@@ -143,19 +169,19 @@ public class PlayerActivity extends Activity {
     private void showQualityDialog() {
         if (playbackInfo == null) return;
         java.util.List<String> opts = new java.util.ArrayList<>();
-        opts.add("Auto (" + autoSelectQuality() + ")");
-        for (YoutubeRepository.Stream s : playbackInfo.videoStreams) opts.add(s.quality + " (" + s.itag + ")");
+        java.util.List<String> vals = new java.util.ArrayList<>();
         opts.add("360p progressive");
+        vals.add("progressive");
+        for (YoutubeRepository.Stream s : playbackInfo.videoStreams) {
+            opts.add(s.quality + " adaptive (" + (s.mime != null ? s.mime.substring(s.mime.lastIndexOf("/")+1) : s.itag) + ")");
+            vals.add(s.quality);
+        }
         new AlertDialog.Builder(this)
             .setTitle("Select quality")
             .setItems(opts.toArray(new String[0]), (d, which) -> {
-                String sel;
-                if (which == 0) sel = autoSelectQuality();
-                else if (which == opts.size()-1) sel = "progressive";
-                else sel = playbackInfo.videoStreams.get(which-1).quality;
                 long pos = player.getCurrentPosition();
                 boolean play = player.getPlayWhenReady();
-                playWithQuality(sel);
+                playWithQuality(vals.get(which));
                 player.seekTo(pos);
                 player.setPlayWhenReady(play);
             }).show();
