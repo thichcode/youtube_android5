@@ -25,6 +25,9 @@ public class PlayerActivity extends Activity {
     private PlayerView playerView;
     private YoutubeRepository.PlaybackInfo playbackInfo;
     private String videoId;
+    private String videoTitle;
+    private boolean autoNextEnabled = true;
+    private boolean isLoadingNext = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -32,9 +35,21 @@ public class PlayerActivity extends Activity {
         setContentView(R.layout.activity_player);
         playerView = findViewById(R.id.player_view);
         videoId = getIntent().getStringExtra("videoId");
+        videoTitle = getIntent().getStringExtra("videoTitle");
         if (videoId == null) { finish(); return; }
         player = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(player);
+        // auto-next listener
+        player.addListener(new com.google.android.exoplayer2.Player.Listener() {
+            @Override public void onPlaybackStateChanged(int state) {
+                if (state == com.google.android.exoplayer2.Player.STATE_ENDED && autoNextEnabled && !isLoadingNext) {
+                    playNextSimilar();
+                }
+            }
+            @Override public void onPlayerError(com.google.android.exoplayer2.PlaybackException e) {
+                android.util.Log.e("TizenTubePlayer","global error: "+e.getMessage(), e);
+            }
+        });
         new Thread(() -> {
             try {
                 YoutubeRepository repo = new YoutubeRepository();
@@ -185,6 +200,42 @@ public class PlayerActivity extends Activity {
         });
     }
 
+    private void playNextSimilar() {
+        if (isLoadingNext) return;
+        isLoadingNext = true;
+        Toast.makeText(this, "Loading next video…", Toast.LENGTH_SHORT).show();
+        final String query = videoTitle != null && !videoTitle.isEmpty() ? videoTitle : "Trending";
+        new Thread(() -> {
+            try {
+                java.util.List<io.gh.yourname.tizentubelite.data.Video> vids = new YoutubeRepository().search(query);
+                io.gh.yourname.tizentubelite.data.Video next = null;
+                if (vids != null) for (io.gh.yourname.tizentubelite.data.Video v : vids) if (!v.id.equals(videoId)) { next = v; break; }
+                if (next == null && vids != null && !vids.isEmpty()) next = vids.get(0);
+                if (next == null) { runOnUiThread(() -> { isLoadingNext = false; Toast.makeText(this, "No next video found", Toast.LENGTH_SHORT).show(); }); return; }
+                final io.gh.yourname.tizentubelite.data.Video n = next;
+                android.util.Log.d("TizenTubePlayer","auto-next: "+videoId+" -> "+n.id+" ("+n.title+") query="+query);
+                runOnUiThread(() -> { isLoadingNext = false; videoId = n.id; videoTitle = n.title; loadVideo(); });
+            } catch (Exception e) { runOnUiThread(() -> { isLoadingNext = false; Toast.makeText(this, "Next failed: "+e.getMessage(), Toast.LENGTH_SHORT).show(); }); }
+        }).start();
+    }
+
+    private void loadVideo() {
+        triedProgressiveFallback = false;
+        player.clearMediaItems();
+        new Thread(() -> {
+            try {
+                YoutubeRepository repo = new YoutubeRepository();
+                playbackInfo = repo.getPlaybackInfo(videoId);
+                if (playbackInfo == null || (playbackInfo.progressiveUrl == null && !playbackInfo.hasAdaptive())) {
+                    runOnUiThread(() -> Toast.makeText(this, "No stream for next video", Toast.LENGTH_SHORT).show());
+                    return;
+                }
+                final String autoQ = autoSelectQuality();
+                runOnUiThread(() -> { Toast.makeText(this, "Now playing: "+videoTitle, Toast.LENGTH_SHORT).show(); playWithQuality(autoQ); });
+            } catch (Exception e) { runOnUiThread(() -> Toast.makeText(this, "Error: "+e.getMessage(), Toast.LENGTH_SHORT).show()); }
+        }).start();
+    }
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
@@ -192,6 +243,10 @@ public class PlayerActivity extends Activity {
                 showQualityDialog();
                 return true;
             }
+        }
+        // NEXT / MEDIA_NEXT / DPAD_RIGHT long press -> next similar
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_NEXT || keyCode == KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD) {
+            playNextSimilar(); return true;
         }
         return super.onKeyDown(keyCode, event);
     }

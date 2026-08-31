@@ -34,6 +34,7 @@ public class HomeFragment extends BrowseSupportFragment {
                 }
                 Intent i = new Intent(getActivity(), PlayerActivity.class);
                 i.putExtra("videoId", v.id);
+                i.putExtra("videoTitle", v.title);
                 startActivity(i);
             }
         });
