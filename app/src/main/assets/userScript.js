@@ -15,46 +15,30 @@
         } catch(e) {}
     })();
 
-    // Bot check detection + auto-reload with cooldown
-    var _botCheckCount = 0;
-    var _lastBotReload = 0;
+    // Bot check detection — hide overlay, no reload (reload causes skeleton)
     function detectBotCheck() {
         var txt = document.body ? document.body.innerText : '';
         var html = document.documentElement ? document.documentElement.innerHTML : '';
-        // YouTube bot check patterns
         var isBot = txt.indexOf('not a bot') !== -1
             || txt.indexOf('Sign in to confirm') !== -1
             || txt.indexOf('confirm you') !== -1
             || txt.indexOf('unusual traffic') !== -1
             || txt.indexOf('are not a robot') !== -1
             || txt.indexOf('verify you are human') !== -1
-            || html.indexOf('sb-captcha-container') !== -1
-            || html.indexOf('captcha') !== -1;
+            || html.indexOf('sb-captcha-container') !== -1;
         if (isBot) {
-            var now = Date.now();
-            _botCheckCount++;
-            console.log('[TizenTubeLite] BOT CHECK detected (#' + _botCheckCount + ')');
-            // Try to bypass: click any verify/captcha button
+            console.log('[TizenTubeLite] BOT CHECK detected — hiding overlay, not reloading');
+            // hide captcha containers instead of reload (reload -> skeleton)
+            document.querySelectorAll('[id*="captcha"],[class*="captcha"],[id*="recaptcha"],[class*="recaptcha"],[id*="unusual"] , [class*="unusual"]').forEach(function(e){ e.style.display='none'; try{e.remove();}catch(_){} });
+            // click verify if present, but don't reload
             var btns = document.querySelectorAll('button, [role="button"], input[type="submit"]');
             for (var i = 0; i < btns.length; i++) {
                 var b = btns[i];
                 var t = (b.textContent || b.value || '').toLowerCase();
-                if (t.indexOf('verify') !== -1 || t.indexOf('confirm') !== -1 || t.indexOf('continue') !== -1 || t.indexOf('next') !== -1) {
+                if (t.indexOf('verify') !== -1 || t.indexOf('confirm') !== -1 || t.indexOf('continue') !== -1) {
                     console.log('[TizenTubeLite] clicking bot-check button: ' + t);
-                    b.click();
-                    return;
-                }
-            }
-            // If too many bot checks, reload with different URL
-            if (_botCheckCount > 2 && (now - _lastBotReload) > 10000) {
-                _lastBotReload = now;
-                _botCheckCount = 0;
-                console.log('[TizenTubeLite] auto-reloading to bypass bot check');
-                // Try m.youtube.com first (less likely to bot check)
-                if (location.hostname !== 'm.youtube.com') {
-                    location.href = 'https://m.youtube.com/?noapp=1';
-                } else {
-                    location.reload();
+                    try{b.click();}catch(e){}
+                    break;
                 }
             }
         }
@@ -190,20 +174,11 @@
     setInterval(bypassCast, 1500);
     setInterval(detectBotCheck, 2000);
 
-    // ===== CAPTCHA AUTO-SOLVE: Click verify buttons, hide captcha overlay =====
+    // ===== CAPTCHA HIDE (no click-loop, no skeleton) =====
     function autoCaptcha() {
-        // Hide captcha containers
-        document.querySelectorAll('[id*="captcha"], [class*="captcha"], [id*="recaptcha"], [class*="recaptcha"]').forEach(function(e){
-            e.style.display = 'none';
+        document.querySelectorAll('[id*="captcha"],[class*="captcha"],[id*="recaptcha"],[class*="recaptcha"]').forEach(function(e){
+            e.style.display='none'; try{e.remove();}catch(_){}
         });
-        // Click verify buttons
-        var btns = document.querySelectorAll('button, [role="button"], input[type="submit"], a');
-        for (var i = 0; i < btns.length; i++) {
-            var t = (btns[i].textContent || btns[i].value || '').toLowerCase();
-            if (t.indexOf('i\'m not a robot') !== -1 || t.indexOf('verify') !== -1 || t.indexOf('continue') !== -1) {
-                btns[i].click();
-            }
-        }
     }
     setInterval(autoCaptcha, 3000);
 
