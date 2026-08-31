@@ -47,15 +47,9 @@ public class PlayerActivity extends Activity {
                     +" hls="+playbackInfo.hlsManifestUrl+" dash="+playbackInfo.dashManifestUrl
                     +" videoCount="+playbackInfo.videoStreams.size()+" audioCount="+playbackInfo.audioStreams.size());
                 triedProgressiveFallback = false;
-                // Priority: HLS > DASH > progressive > adaptive
-                if (playbackInfo.hlsManifestUrl != null && !playbackInfo.hlsManifestUrl.isEmpty()) {
-                    final String hls = playbackInfo.hlsManifestUrl;
-                    runOnUiThread(() -> playHls(hls));
-                } else if (playbackInfo.progressiveUrl != null) {
-                    runOnUiThread(() -> playWithQuality("progressive"));
-                } else {
-                    runOnUiThread(() -> playWithQuality(autoSelectQuality()));
-                }
+                final String autoQ = autoSelectQuality();
+                android.util.Log.d("TizenTubePlayer","autoQ="+autoQ+" fast="+isFastNetwork());
+                runOnUiThread(() -> playWithQuality(autoQ));
             } catch (Exception e) {
                 runOnUiThread(() -> Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show());
             }
@@ -63,11 +57,36 @@ public class PlayerActivity extends Activity {
     }
 
     private String autoSelectQuality() {
-        return "progressive";
+        if (playbackInfo == null) return "progressive";
+        // no adaptive -> must use progressive
+        if (playbackInfo.videoStreams.isEmpty()) return "progressive";
+        boolean fast = isFastNetwork();
+        // fast network (wifi/ethernet) -> try 720p, then 480p, then best available
+        if (fast) {
+            for (YoutubeRepository.Stream s : playbackInfo.videoStreams) if ("720p".equals(s.quality)) return "720p";
+            for (YoutubeRepository.Stream s : playbackInfo.videoStreams) if ("480p".equals(s.quality)) return "480p";
+            return playbackInfo.videoStreams.get(0).quality;
+        } else {
+            // slow/mobile -> stay 360p progressive for stability
+            return "progressive";
+        }
+    }
+
+    private boolean isFastNetwork() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) return false;
+            NetworkInfo ni = cm.getActiveNetworkInfo();
+            if (ni == null || !ni.isConnected()) return false;
+            int type = ni.getType();
+            // WIFI or ETHERNET (9) are fast; mobile/other are slow
+            return type == ConnectivityManager.TYPE_WIFI || type == 9;
+        } catch (Exception e) { return false; }
     }
 
     private boolean triedProgressiveFallback = false;
     private static final String STREAM_UA = "com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip";
+    private static final String STREAM_UA_VR = "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip";
 
     private void playHls(String url) {
         DataSource.Factory dsf = createStreamDataSource();
@@ -78,20 +97,31 @@ public class PlayerActivity extends Activity {
         player.prepare();
         player.play();
         Toast.makeText(this, "Playing HLS stream", Toast.LENGTH_SHORT).show();
+        player.addListener(new com.google.android.exoplayer2.Player.Listener() {
+            @Override public void onPlayerError(com.google.android.exoplayer2.PlaybackException e) {
+                android.util.Log.e("TizenTubePlayer","hls error: "+e.getMessage(), e);
+                if (!triedProgressiveFallback && playbackInfo.progressiveUrl != null) {
+                    triedProgressiveFallback = true;
+                    runOnUiThread(() -> { Toast.makeText(PlayerActivity.this,"HLS failed, fallback 360p",Toast.LENGTH_SHORT).show(); playWithQuality("progressive"); });
+                }
+            }
+        });
     }
 
-    private DataSource.Factory createStreamDataSource() {
+    private DataSource.Factory createStreamDataSource(String ua) {
         return new DataSource.Factory() {
             @Override
             public DataSource createDataSource() {
-                return new DefaultHttpDataSource(STREAM_UA, 15000, 15000);
+                return new DefaultHttpDataSource(ua, 15000, 15000);
             }
         };
     }
+    private DataSource.Factory createStreamDataSource() { return createStreamDataSource(STREAM_UA); }
     private void playWithQuality(String quality) {
         if (playbackInfo == null) return;
-        triedProgressiveFallback = false;
-        DataSource.Factory dsf = createStreamDataSource();
+        // adaptive streams need VR UA, progressive needs ANDROID UA
+        boolean isAdaptive = !"progressive".equals(quality) && !playbackInfo.videoStreams.isEmpty();
+        DataSource.Factory dsf = createStreamDataSource(isAdaptive ? STREAM_UA_VR : STREAM_UA);
         MediaSource ms = null;
         if ("progressive".equals(quality) || playbackInfo.videoStreams.isEmpty()) {
             String url = playbackInfo.progressiveUrl;

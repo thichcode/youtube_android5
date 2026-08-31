@@ -497,21 +497,32 @@ public class YoutubeRepository {
 
     public PlaybackInfo getPlaybackInfo(String videoId) throws IOException {
         String vis = getVisitorData();
-        // ANDROID client (not VR) returns progressive URLs that work without IP validation
+        PlaybackInfo merged = null;
         if (!vis.isEmpty()) {
-            JSONObject j = getPlayerJson(videoId, vis, ANDROID_UA, "ANDROID", "21.26.364", 30, "Linux; U; Android 11");
-            if (j != null) {
-                PlaybackInfo pi = parsePlaybackInfo(j);
-                if (pi != null && pi.progressiveUrl != null) return pi;
+            // ANDROID gives stable progressive (360p muxed) - always works
+            JSONObject jA = getPlayerJson(videoId, vis, ANDROID_UA, "ANDROID", "21.26.364", 30, "Linux; U; Android 11");
+            PlaybackInfo piA = jA != null ? parsePlaybackInfo(jA) : null;
+            // ANDROID_VR gives adaptive (720p/480p) - may 403 but try when network good
+            JSONObject jVR = getPlayerJson(videoId, vis, ANDROID_VR_UA, "ANDROID_VR", "1.65.10", 32, "Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1");
+            PlaybackInfo piVR = jVR != null ? parsePlaybackInfo(jVR) : null;
+
+            // Merge: progressive from ANDROID (stable), adaptive from VR (high quality)
+            merged = new PlaybackInfo();
+            if (piA != null && piA.progressiveUrl != null) merged.progressiveUrl = piA.progressiveUrl;
+            else if (piVR != null && piVR.progressiveUrl != null) merged.progressiveUrl = piVR.progressiveUrl;
+            if (piVR != null && piVR.hasAdaptive()) {
+                merged.videoStreams.addAll(piVR.videoStreams);
+                merged.audioStreams.addAll(piVR.audioStreams);
             }
-            // ANDROID_VR has adaptive (720p) but URLs often 403 on download
-            j = getPlayerJson(videoId, vis, ANDROID_VR_UA, "ANDROID_VR", "1.65.10", 32, "Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1");
-            if (j != null) {
-                PlaybackInfo pi = parsePlaybackInfo(j);
-                if (pi != null && (pi.progressiveUrl != null || pi.hasAdaptive())) return pi;
+            if (piA != null && piA.hasAdaptive() && merged.videoStreams.isEmpty()) {
+                merged.videoStreams.addAll(piA.videoStreams);
+                merged.audioStreams.addAll(piA.audioStreams);
             }
+            merged.hlsManifestUrl = piVR != null && piVR.hlsManifestUrl != null ? piVR.hlsManifestUrl : (piA != null ? piA.hlsManifestUrl : null);
+            merged.dashManifestUrl = piVR != null && piVR.dashManifestUrl != null ? piVR.dashManifestUrl : (piA != null ? piA.dashManifestUrl : null);
+            if (merged.progressiveUrl != null || merged.hasAdaptive() || merged.hlsManifestUrl != null) return merged;
         }
-        // Worker fallback (TVHTML5) - may be UNPLAYABLE but try
+        // Worker fallback (TVHTML5)
         try {
             JSONObject ctx = new JSONObject();
             ctx.put("context", new JSONObject().put("client", new JSONObject().put("clientName", "TVHTML5").put("clientVersion", "7.20240701.00.00").put("hl","en").put("gl","US").put("platform","TV")));
@@ -520,7 +531,7 @@ public class YoutubeRepository {
             PlaybackInfo pi = parsePlaybackInfo(res);
             if (pi != null && (pi.progressiveUrl != null || pi.hasAdaptive())) return pi;
         } catch (Exception ignored) {}
-        return null;
+        return merged;
     }
 
     private JSONObject getPlayerJson(String videoId, String vis, String ua, String clientName, String clientVersion, int sdk, String osDesc) throws IOException {
