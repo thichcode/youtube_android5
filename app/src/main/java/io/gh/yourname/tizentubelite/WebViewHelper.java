@@ -5,11 +5,11 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 
 public class WebViewHelper {
-    public static final String YT_TV_URL = "https://www.youtube.com";
+    public static final String YT_TV_URL = "https://www.youtube.com/tv";
     public static final String PROXY_BASE = "https://yt-tv-proxy.dvt-kisu.workers.dev";
-    // Chrome 95 = last WebView for Android 5 (API21) - supports ?. / ?? for m.youtube.com
+    // Chrome 95 = last WebView for Android 5 (API21)
     public static final String USER_AGENT = "Mozilla/5.0 (Linux; Android 11; AFTSS Build/RTM2.230615.001) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.74 Safari/537.36";
-    public static final String FALLBACK_URL = "https://m.youtube.com/?noapp=1";
+    public static final String FALLBACK_URL = "https://www.youtube.com/tv";
     // Comprehensive bot detection bypass for YouTube
     public static final String BOT_SPOOF_JS = ""
         + "(function(){try{"
@@ -30,8 +30,7 @@ public class WebViewHelper {
         // connection info (prevents network check)
         + "if(navigator.connection){Object.defineProperty(navigator.connection,'rtt',{get:function(){return 50},configurable:true});}"
         // permissions API bypass
-        + "var origQuery=Notification&&Notification.permission?Notification.permission:'default';"
-        + "if(window.Notification){Object.defineProperty(Notification,'permission',{get:function(){return'granted'},configurable:true});}"
+        + "if(typeof Notification!=='undefined' && Notification){try{Object.defineProperty(Notification,'permission',{get:function(){return'granted'},configurable:true});}catch(e){}}"
         // document.hasFocus - YouTube checks this
         + "var origHasFocus=document.hasFocus.bind(document);document.hasFocus=function(){return true;};"
         // Override toString to hide modifications

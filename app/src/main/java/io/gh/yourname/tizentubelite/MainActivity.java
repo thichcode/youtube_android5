@@ -79,17 +79,15 @@ public class MainActivity extends Activity {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 Log.d(TAG, "DIAG onPageStarted url=" + url);
-                // Inject bot-spoof IMMEDIATELY before any page JS runs
                 view.evaluateJavascript(WebViewHelper.BOT_SPOOF_JS, null);
-                view.evaluateJavascript(WebViewHelper.FETCH_PROXY_JS, null);
+                // proxy disabled for residential IP (Memu 113.x) - direct youtubei works
+                // view.evaluateJavascript(WebViewHelper.FETCH_PROXY_JS, null);
             }
             @Override
             public void onPageFinished(WebView view, String url) {
                 Log.d(TAG, "DIAG onPageFinished url=" + url + " title=" + view.getTitle() + " interceptCount=" + interceptCount);
                 Log.d(TAG, "DIAG cookies after load=" + CookieManager.getInstance().getCookie("https://www.youtube.com"));
-                // Re-inject bot-spoof (YouTube may have cleared it)
                 view.evaluateJavascript(WebViewHelper.BOT_SPOOF_JS, null);
-                // Inject userScript (ad-block + proxy + bot-bypass)
                 if (userScript != null) view.evaluateJavascript(userScript, null);
                 // Diagnostics
                 view.evaluateJavascript("(function(){var t=document.documentElement?document.documentElement.innerHTML:'';var txt=document.body?document.body.innerText:'';return JSON.stringify({len:t.length,txt:txt.substring(0,500),url:location.href,title:document.title,hasBot:txt.indexOf('not a bot')!==-1||txt.indexOf('Sign in to confirm')!==-1,hasCast:txt.indexOf('Ready to cast')!==-1});})();", value -> {

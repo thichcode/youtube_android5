@@ -60,7 +60,9 @@
         }
     }
 
-    // ===== PROXY youtubei via Worker (POST body fix for WebView) =====
+    // ===== PROXY youtubei via Worker - DISABLED for residential IP (direct works) =====
+    // (proxied requests were causing blank feed; re-enable only if datacenter IP)
+    /* disabled
     (function(){
         var PROXY = "https://yt-tv-proxy.dvt-kisu.workers.dev";
         var ORIG = "https://www.youtube.com";
@@ -91,6 +93,7 @@
             console.log("[TizenTubeLite] fetch/XHR proxy enabled -> "+PROXY);
         } catch(e){ console.log("[TizenTubeLite] proxy hook failed "+e); }
     })();
+    */
 
     // ===== AD STRIPPING (JSON.parse hook) =====
     var origParse = JSON.parse;
