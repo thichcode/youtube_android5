@@ -2,6 +2,25 @@ plugins {
     id 'com.android.application'
 }
 
+def loadSigning = {
+    def kf = rootProject.file('app/keystore.properties')
+    if (kf.exists()) {
+        def ks = new Properties()
+        kf.withInputStream { ks.load(it) }
+        return [file: rootProject.file("app/${ks.storeFile}"), pass: ks.storePassword,
+                alias: ks.keyAlias, keypass: ks.keyPassword]
+    }
+    def envPass = System.getenv('KEYSTORE_PASSWORD')
+    if (envPass != null) {
+        def cf = rootProject.file('app/ci-release.jks')
+        if (cf.exists()) {
+            return [file: cf, pass: envPass, alias: System.getenv('KEY_ALIAS'), keypass: System.getenv('KEY_PASSWORD')]
+        }
+    }
+    null
+}
+def signing = loadSigning()
+
 android {
     namespace 'io.gh.yourname.tizentubelite'
     compileSdk 34
@@ -9,15 +28,26 @@ android {
         applicationId "io.gh.yourname.tizentubelite"
         minSdk 21
         targetSdk 34
-        versionCode 19
-        versionName "1.0.18-webview95"
+        versionCode 20
+        versionName "1.0.19-botfix"
         ndk { abiFilters "armeabi-v7a" }
+    }
+    signingConfigs {
+        release {
+            if (signing != null) {
+                storeFile signing.file
+                storePassword signing.pass
+                keyAlias signing.alias
+                keyPassword signing.keypass
+            }
+        }
     }
     buildTypes {
         release {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (signing != null) signingConfig signingConfigs.release
         }
         debug {
             minifyEnabled false
@@ -27,12 +57,10 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-    // APK filename = TizenTubeLite-v{versionName}.apk (matches git tag v1.0.18-webview95)
     applicationVariants.all { variant ->
         variant.outputs.all {
             def buildType = variant.buildType.name
             def ver = variant.versionName
-            // e.g. TizenTubeLite-v1.0.2-lite-debug.apk / TizenTubeLite-v1.0.2-lite-release.apk
             outputFileName = "TizenTubeLite-v${ver}-${buildType}.apk"
         }
     }

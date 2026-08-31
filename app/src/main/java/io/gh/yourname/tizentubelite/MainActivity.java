@@ -79,6 +79,7 @@ public class MainActivity extends Activity {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 Log.d(TAG, "DIAG onPageStarted url=" + url);
+                // Inject bot-spoof IMMEDIATELY before any page JS runs
                 view.evaluateJavascript(WebViewHelper.BOT_SPOOF_JS, null);
                 view.evaluateJavascript(WebViewHelper.FETCH_PROXY_JS, null);
             }
@@ -86,25 +87,13 @@ public class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 Log.d(TAG, "DIAG onPageFinished url=" + url + " title=" + view.getTitle() + " interceptCount=" + interceptCount);
                 Log.d(TAG, "DIAG cookies after load=" + CookieManager.getInstance().getCookie("https://www.youtube.com"));
+                // Re-inject bot-spoof (YouTube may have cleared it)
                 view.evaluateJavascript(WebViewHelper.BOT_SPOOF_JS, null);
+                // Inject userScript (ad-block + proxy + bot-bypass)
                 if (userScript != null) view.evaluateJavascript(userScript, null);
-                view.evaluateJavascript("(function(){var t=document.documentElement ? document.documentElement.innerHTML : ''; var txt=document.body?document.body.innerText:''; return JSON.stringify({len:t.length, txt:txt.substring(0,800), url:location.href, hasCast:txt.includes('Ready to cast'), hasBot:txt.includes('not a bot')||txt.includes('Sign in to confirm'), title:document.title});})();", value -> {
+                // Diagnostics
+                view.evaluateJavascript("(function(){var t=document.documentElement?document.documentElement.innerHTML:'';var txt=document.body?document.body.innerText:'';return JSON.stringify({len:t.length,txt:txt.substring(0,500),url:location.href,title:document.title,hasBot:txt.indexOf('not a bot')!==-1||txt.indexOf('Sign in to confirm')!==-1,hasCast:txt.indexOf('Ready to cast')!==-1});})();", value -> {
                     Log.d(TAG, "DIAG pageContent=" + value);
-                    if (value != null && (value.contains("Ready to cast") || value.contains("BOT_DETECTED") || value.contains("not a bot"))) {
-                        Log.w(TAG, "DIAG detected cast/bot screen!");
-                    }
-                });
-                view.evaluateJavascript("(function(){var t=document.body?document.body.innerText:'';if(t.includes('not a bot')||t.includes('Sign in to confirm')){return 'BOT_DETECTED';}if(t.includes('Ready to cast')){return 'CAST_SCREEN';}return 'OK';})();", value -> {
-                    Log.d(TAG, "DIAG screenCheck=" + value);
-                    if (value != null && value.contains("BOT_DETECTED")) {
-                        new AlertDialog.Builder(MainActivity.this)
-                            .setTitle("YouTube bot check")
-                            .setMessage("YouTube yêu cầu xác minh. Thử mở m.youtube.com (ít bị check hơn) hoặc quét QR yt.be/activate trên điện thoại?")
-                            .setPositiveButton("Thử m.youtube.com", (d,w)-> view.loadUrl(WebViewHelper.FALLBACK_URL))
-                            .setNegativeButton("Thử lại TV", (d,w)-> view.reload())
-                            .setNeutralButton("Đóng", null)
-                            .show();
-                    }
                 });
             }
             @Override
