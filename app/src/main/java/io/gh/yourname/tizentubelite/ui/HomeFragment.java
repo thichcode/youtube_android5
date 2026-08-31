@@ -96,6 +96,7 @@ public class HomeFragment extends BrowseSupportFragment {
             ImageCardView card = new ImageCardView(parent.getContext());
             card.setFocusable(true);
             card.setFocusableInTouchMode(true);
+            card.setMainImageDimensions(320, 180);
             return new ViewHolder(card);
         }
         @Override
@@ -104,10 +105,23 @@ public class HomeFragment extends BrowseSupportFragment {
             ImageCardView card = (ImageCardView) viewHolder.view;
             card.setTitleText(v.title);
             card.setContentText(v.id);
-            // thumb loading via Glide/Picasso omitted for brevity; use placeholder
             card.setMainImageDimensions(320, 180);
+            // Load thumbnail
+            if (v.thumb != null && !v.thumb.isEmpty() && !"SEARCH".equals(v.id)) {
+                try {
+                    com.bumptech.glide.Glide.with(card.getContext())
+                        .load(v.thumb)
+                        .placeholder(android.R.drawable.sym_def_app_icon)
+                        .error(android.R.drawable.sym_def_app_icon)
+                        .into(card.getMainImageView());
+                } catch (Exception ignored) {}
+            } else {
+                card.setMainImage(card.getResources().getDrawable(android.R.drawable.sym_def_app_icon));
+            }
         }
         @Override
-        public void onUnbindViewHolder(ViewHolder viewHolder) {}
+        public void onUnbindViewHolder(ViewHolder viewHolder) {
+            try { com.bumptech.glide.Glide.with(viewHolder.view.getContext()).clear(((ImageCardView)viewHolder.view).getMainImageView()); } catch (Exception ignored) {}
+        }
     }
 }
