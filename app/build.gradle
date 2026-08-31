@@ -28,8 +28,8 @@ android {
         applicationId "io.gh.yourname.tizentubelite"
         minSdk 21
         targetSdk 34
-        versionCode 20
-        versionName "1.0.19-botfix"
+        versionCode 1
+        versionName "1.0.0"
         ndk { abiFilters "armeabi-v7a" }
     }
     signingConfigs {
