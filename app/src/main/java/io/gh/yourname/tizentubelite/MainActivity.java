@@ -50,7 +50,6 @@ public class MainActivity extends Activity {
         Log.d(TAG, "DIAG YT_URL=" + WebViewHelper.YT_TV_URL);
         Log.d(TAG, "DIAG PROXY_BASE=" + WebViewHelper.PROXY_BASE);
         Log.d(TAG, "DIAG WebView version=" + WebViewHelper.getWebViewMajorVersion(this));
-        // Cookie + storage to avoid bot check (YouTube needs cookies)
         CookieManager cm = CookieManager.getInstance();
         cm.setAcceptCookie(true);
         if (Build.VERSION.SDK_INT >= 21) {
@@ -58,6 +57,22 @@ public class MainActivity extends Activity {
             CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         }
         Log.d(TAG, "DIAG cookies before load=" + cm.getCookie("https://www.youtube.com"));
+        // Pre-seed VISITOR_INFO1_LIVE with fresh visitorData (bypasses bot check for 1+ clips)
+        new Thread(() -> {
+            try {
+                String vd = fetchVisitorData();
+                if (vd != null && !vd.isEmpty()) {
+                    Log.d(TAG, "DIAG visitorData fetched len=" + vd.length());
+                    runOnUiThread(() -> {
+                        CookieManager c2 = CookieManager.getInstance();
+                        c2.setCookie("https://www.youtube.com", "VISITOR_INFO1_LIVE=" + vd + "; path=/; domain=.youtube.com");
+                        c2.setCookie("https://www.youtube.com", "VISITOR_PRIVACY_METADATA=CgJWThIEGgAgYg==; path=/; domain=.youtube.com");
+                        c2.flush();
+                        Log.d(TAG, "DIAG visitor cookie seeded");
+                    });
+                }
+            } catch (Exception e) { Log.d(TAG, "DIAG visitorData fetch failed: " + e); }
+        }).start();
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -125,25 +140,54 @@ public class MainActivity extends Activity {
             botDialogShowing = true;
             new AlertDialog.Builder(this)
                 .setTitle("YouTube chặn bot")
-                .setMessage("YouTube yêu cầu xác minh \"I'm not a robot\". Chọn cách xử lý:")
-                .setPositiveButton("Thử lại (xóa cookie)", (d,w) -> {
+                .setMessage("YouTube yêu cầu xác minh \"I'm not a robot\".")
+                .setPositiveButton("Thử lại (visitorData mới)", (d,w) -> {
                     botDialogShowing = false;
-                    CookieManager cm = CookieManager.getInstance();
-                    cm.removeAllCookies(null);
-                    cm.flush();
+                    new Thread(() -> {
+                        String vd = fetchVisitorData();
+                        runOnUiThread(() -> {
+                            CookieManager cm = CookieManager.getInstance();
+                            cm.removeAllCookies(null);
+                            if (vd != null && !vd.isEmpty()) {
+                                cm.setCookie("https://www.youtube.com", "VISITOR_INFO1_LIVE=" + vd + "; path=/; domain=.youtube.com");
+                                cm.setCookie("https://www.youtube.com", "VISITOR_PRIVACY_METADATA=CgJWThIEGgAgYg==; path=/; domain=.youtube.com");
+                            }
+                            cm.flush();
+                            webView.clearCache(true);
+                            webView.clearHistory();
+                            webView.loadUrl(WebViewHelper.YT_TV_URL);
+                        });
+                    }).start();
+                })
+                .setNegativeButton("Đổi UA & thử lại", (d,w) -> {
+                    botDialogShowing = false;
+                    webView.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36");
                     webView.clearCache(true);
-                    webView.clearHistory();
                     webView.loadUrl(WebViewHelper.YT_TV_URL);
                 })
-                .setNegativeButton("Mở m.youtube.com", (d,w) -> {
-                    botDialogShowing = false;
-                    webView.loadUrl("https://m.youtube.com/?persist_app=1&noapp=1");
-                })
-                .setNeutralButton("Đóng (ẩn overlay)", (d,w) -> botDialogShowing = false)
+                .setNeutralButton("Đóng", (d,w) -> botDialogShowing = false)
                 .setOnDismissListener(d -> botDialogShowing = false)
                 .setCancelable(false)
                 .show();
         });
+    }
+
+    private String fetchVisitorData() {
+        try {
+            okhttp3.OkHttpClient c = new okhttp3.OkHttpClient.Builder()
+                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS).build();
+            okhttp3.Request req = new okhttp3.Request.Builder()
+                .url("https://www.youtube.com/")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+                .build();
+            try (okhttp3.Response resp = c.newCall(req).execute()) {
+                String body = resp.body() != null ? resp.body().string() : "";
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"visitorData\":\"([^\"]{10,})\"").matcher(body);
+                if (m.find()) return m.group(1);
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     private String loadAsset(String name) {
