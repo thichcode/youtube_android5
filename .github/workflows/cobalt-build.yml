@@ -105,11 +105,14 @@ jobs:
 
       - name: Sign APK (debug keystore)
         run: |
+          TAG_NAME="${GITHUB_REF_NAME:-v1.0.2-cobalt-android5}"
+          OUT="TizenTubeCobalt-${TAG_NAME}.apk"
+          echo "Signing to $OUT (tag $TAG_NAME)"
           keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
-          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out TizenTubeCobalt-v1.0.2-cobalt-android5.apk cobalt-patched-unsigned.apk || \
-            jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA256 -keystore debug.keystore -storepass android cobalt-patched-unsigned.apk androiddebugkey && cp cobalt-patched-unsigned.apk TizenTubeCobalt-v1.0.2-cobalt-android5.apk
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out "$OUT" cobalt-patched-unsigned.apk || \
+            jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA256 -keystore debug.keystore -storepass android cobalt-patched-unsigned.apk androiddebugkey && cp cobalt-patched-unsigned.apk "$OUT"
           ls -lh TizenTube*.apk
-          $ANDROID_HOME/build-tools/34.0.0/aapt dump badging TizenTubeCobalt-v1.0.2-cobalt-android5.apk | grep -E "sdkVersion|package" || true
+          $ANDROID_HOME/build-tools/34.0.0/aapt dump badging "$OUT" | grep -E "sdkVersion|package" || true
 
       - name: Upload patched APK
         uses: actions/upload-artifact@v4
