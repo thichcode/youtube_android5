@@ -1,6 +1,52 @@
-// TizenTube Lite - ad-block + Worker proxy + bot-check bypass (WebView Android 5)
+// TizenTube Lite - ad-block + native player bridge (WebView Android 5)
 (function() {
     'use strict';
+
+    // ===== NATIVE PLAYER BRIDGE — intercept video clicks, play via ExoPlayer =====
+    function extractId(url){
+        if(!url) return null;
+        var m = url.match(/[?&]v=([^&]+)/); if(m) return m[1];
+        m = url.match(/youtu\.be\/([^?&]+)/); if(m) return m[1];
+        m = url.match(/\/embed\/([^?&\/]+)/); if(m) return m[1];
+        return null;
+    }
+    function hookVideoLinks(){
+        document.addEventListener('click', function(e){
+            var a = e.target.closest('a');
+            if(!a) return;
+            var href = a.href || a.getAttribute('href') || '';
+            var vid = extractId(href);
+            if(vid){
+                try{
+                    var title = a.textContent || a.getAttribute('title') || '';
+                    // prefer title from nearby thumb
+                    var card = a.closest('[class*="video"],[class*="item"],ytd-video-renderer,ytd-compact-video-renderer');
+                    if(card) { var t2 = card.querySelector('#video-title'); if(t2) title = t2.textContent; }
+                    if(window.TizenLite && window.TizenLite.playVideoWithTitle){ window.TizenLite.playVideoWithTitle(vid, title.trim().substring(0,120)); e.preventDefault(); e.stopPropagation(); return false; }
+                    if(window.TizenLite && window.TizenLite.playVideo){ window.TizenLite.playVideo(vid); e.preventDefault(); e.stopPropagation(); return false; }
+                }catch(_){}
+            }
+        }, true);
+        // watch page: if player is blank, inject native play button
+        function injectPlayBtn(){
+            var vid = extractId(location.href);
+            if(vid && location.href.indexOf('/watch')!==-1){
+                var player = document.querySelector('#player, #movie_player, ytd-player, [id*="player"]');
+                var empty = player && (player.innerHTML.length < 500 || document.body.innerText.indexOf('SAU NÀY EM CƯỚI')!==-1 && player.offsetHeight < 100);
+                // if player area is blank (white), show button
+                if(!document.getElementById('_tizenPlayBtn')){
+                    var btn = document.createElement('button');
+                    btn.id = '_tizenPlayBtn';
+                    btn.textContent = '▶ Play with Native Player';
+                    btn.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:99999;padding:14px 28px;background:#ff0033;color:#fff;border:none;border-radius:8px;font-size:18px;cursor:pointer;';
+                    btn.onclick = function(){ try{ var t=document.title||''; if(window.TizenLite.playVideoWithTitle) window.TizenLite.playVideoWithTitle(vid,t); else window.TizenLite.playVideo(vid); }catch(e){ location.href='https://m.youtube.com/watch?v='+vid; } };
+                    document.body.appendChild(btn);
+                }
+            }
+        }
+        setInterval(injectPlayBtn, 2000);
+    }
+    try{ hookVideoLinks(); }catch(e){}
 
     // ===== BOT-CHECK BYPASS (must run first) =====
     // Override navigator.webdriver repeatedly (YouTube may re-inject)
