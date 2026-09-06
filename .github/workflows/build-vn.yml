@@ -25,7 +25,7 @@ jobs:
       - name: Patch default country to VN
         working-directory: pipepipe/PipePipeClient
         run: |
-          sed -i '/content_country_key/{n;s/android:defaultValue="@string\/default_localization_key"/android:defaultValue="VN"/}' app/src/main/res/xml/content_settings.xml
+          sed -i 's/android:defaultValue="@string\/default_localization_key"/android:defaultValue="VN"/3' app/src/main/res/xml/content_settings.xml
 
       - name: Add resolver URL setting
         working-directory: pipepipe/PipePipeClient
