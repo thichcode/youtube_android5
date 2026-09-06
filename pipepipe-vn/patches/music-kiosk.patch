@@ -30,10 +30,10 @@ index 7e917fb..5371284 100644
          }
 diff --git a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/extractors/YoutubeMusicKioskExtractor.java b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/extractors/YoutubeMusicKioskExtractor.java
 new file mode 100644
-index 0000000..e15aa00
+index 0000000..ce4138f
 --- /dev/null
 +++ b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/extractors/YoutubeMusicKioskExtractor.java
-@@ -0,0 +1,67 @@
+@@ -0,0 +1,90 @@
 +package org.schabi.newpipe.extractor.services.youtube.extractors;
 +
 +import org.schabi.newpipe.extractor.InfoItem;
@@ -45,11 +45,14 @@ index 0000000..e15aa00
 +import org.schabi.newpipe.extractor.exceptions.ParsingException;
 +import org.schabi.newpipe.extractor.kiosk.KioskExtractor;
 +import org.schabi.newpipe.extractor.linkhandler.ListLinkHandler;
++import org.schabi.newpipe.extractor.search.filter.FilterGroup;
++import org.schabi.newpipe.extractor.search.filter.FilterItem;
 +import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory;
 +import org.schabi.newpipe.extractor.stream.StreamInfoItem;
 +
 +import java.io.IOException;
 +import java.util.ArrayList;
++import java.util.Collections;
 +import java.util.List;
 +
 +import javax.annotation.Nonnull;
@@ -62,7 +65,27 @@ index 0000000..e15aa00
 +                                      final String kioskId) throws ParsingException {
 +        super(service, linkHandler, kioskId);
 +        delegate = new YoutubeSearchExtractor(service,
-+                YoutubeSearchQueryHandlerFactory.getInstance().fromQuery("karaoke nhß║íc trß║╗"));
++                YoutubeSearchQueryHandlerFactory.getInstance().fromQuery(
++                        "karaoke nhß║íc trß║╗",
++                        Collections.singletonList(getVideosFilter()),
++                        null));
++    }
++
++    private static FilterItem getVideosFilter() throws ParsingException {
++        final FilterGroup[] groups = YoutubeSearchQueryHandlerFactory.getInstance()
++                .getAvailableContentFilter().getFilterGroups();
++        if (groups != null) {
++            for (final FilterGroup group : groups) {
++                if (group.filterItems != null) {
++                    for (final FilterItem item : group.filterItems) {
++                        if (YoutubeSearchQueryHandlerFactory.VIDEOS.equals(item.getName())) {
++                            return item;
++                        }
++                    }
++                }
++            }
++        }
++        throw new ParsingException("Videos search filter not found");
 +    }
 +
 +    @Override
