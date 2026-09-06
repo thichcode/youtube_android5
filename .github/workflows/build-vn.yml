@@ -10,17 +10,25 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repo (for patches)
+        uses: actions/checkout@v3
+
       - name: Clone PipePipe
         run: |
           git config --global url."https://github.com/".insteadOf "git@github.com:"
           git clone --depth 1 --branch v4.9.2 https://github.com/InfinityLoop1308/PipePipe.git pipepipe
           cd pipepipe && git submodule update --init --depth 1
 
+      - name: Apply VisionOS extractor backport
+        run: |
+          git -C pipepipe/PipePipeExtractor apply $GITHUB_WORKSPACE/pipepipe-vn/patches/visionos-backport.patch
+          git -C pipepipe/PipePipeExtractor diff --stat
+
       - name: Patch app name and version
         working-directory: pipepipe/PipePipeClient
         run: |
           sed -i 's/resValue "string", "app_name", "PipePipe"/resValue "string", "app_name", "PipePipe VN"/' app/build.gradle
-          sed -i 's/versionName "4.9.2"/versionName "4.9.2-vn"/' app/build.gradle
+          sed -i 's/versionCode 1097/versionCode 1098/' app/build.gradle
 
       - name: Patch default country to VN
         working-directory: pipepipe/PipePipeClient

@@ -1,0 +1,202 @@
+﻿diff --git a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/ClientsConstants.java b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/ClientsConstants.java
+index 8b26519..3c2b4c9 100644
+--- a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/ClientsConstants.java
++++ b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/ClientsConstants.java
+@@ -115,4 +115,13 @@ final class ClientsConstants {
+      * </p>
+      */
+     static final String ANDROID_CLIENT_VERSION = "21.03.36";
++
++    // VISIONOS (Apple Vision Pro) client fields
++
++    static final String VISIONOS_CLIENT_ID = "101";
++    static final String VISIONOS_CLIENT_NAME = "VISIONOS";
++    static final String VISIONOS_CLIENT_VERSION = "1.02";
++    static final String VISIONOS_DEVICE_MODEL = "RealityDevice14,1";
++    static final String VISIONOS_VERSION = "25.6.0.23O471";
++    static final String VISIONOS_USER_AGENT_VERSION = "25_6_0";
+ }
+diff --git a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/InnertubeClientRequestInfo.java b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/InnertubeClientRequestInfo.java
+index fad7c8e..8f154cc 100644
+--- a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/InnertubeClientRequestInfo.java
++++ b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/InnertubeClientRequestInfo.java
+@@ -11,6 +11,11 @@ import static org.schabi.newpipe.extractor.services.youtube.ClientsConstants.IOS
+ import static org.schabi.newpipe.extractor.services.youtube.ClientsConstants.IOS_DEVICE_MODEL;
+ import static org.schabi.newpipe.extractor.services.youtube.ClientsConstants.IOS_OS_VERSION;
+ import static org.schabi.newpipe.extractor.services.youtube.ClientsConstants.MOBILE_CLIENT_PLATFORM;
++import static org.schabi.newpipe.extractor.services.youtube.ClientsConstants.VISIONOS_CLIENT_ID;
++import static org.schabi.newpipe.extractor.services.youtube.ClientsConstants.VISIONOS_CLIENT_NAME;
++import static org.schabi.newpipe.extractor.services.youtube.ClientsConstants.VISIONOS_CLIENT_VERSION;
++import static org.schabi.newpipe.extractor.services.youtube.ClientsConstants.VISIONOS_DEVICE_MODEL;
++import static org.schabi.newpipe.extractor.services.youtube.ClientsConstants.VISIONOS_VERSION;
+ import static org.schabi.newpipe.extractor.services.youtube.ClientsConstants.WATCH_CLIENT_SCREEN;
+ import static org.schabi.newpipe.extractor.services.youtube.ClientsConstants.WEB_CLIENT_ID;
+ import static org.schabi.newpipe.extractor.services.youtube.ClientsConstants.WEB_CLIENT_NAME;
+@@ -129,4 +134,13 @@ public final class InnertubeClientRequestInfo {
+                 new InnertubeClientRequestInfo.DeviceInfo(MOBILE_CLIENT_PLATFORM, "Apple",
+                         IOS_DEVICE_MODEL, "iOS", IOS_OS_VERSION, -1));
+     }
++
++    @Nonnull
++    public static InnertubeClientRequestInfo ofVisionOsClient() {
++        return new InnertubeClientRequestInfo(
++                new InnertubeClientRequestInfo.ClientInfo(VISIONOS_CLIENT_NAME,
++                        VISIONOS_CLIENT_VERSION, WATCH_CLIENT_SCREEN, VISIONOS_CLIENT_ID, null),
++                new InnertubeClientRequestInfo.DeviceInfo(MOBILE_CLIENT_PLATFORM, "Apple",
++                        VISIONOS_DEVICE_MODEL, "visionOS", VISIONOS_VERSION, -1));
++    }
+ }
+diff --git a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeParsingHelper.java b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeParsingHelper.java
+index ec040f1..a07a245 100644
+--- a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeParsingHelper.java
++++ b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeParsingHelper.java
+@@ -1245,6 +1245,17 @@ YoutubeParsingHelper {
+                 IOS_YOUTUBE_KEY, endPartOfUrlRequest, callback);
+     }
+ 
++    public static CancellableCall getJsonVisionOsPostResponseAsync(
++            final String endpoint,
++            final byte[] body,
++            @Nonnull final Localization localization,
++            @Nonnull final String userAgent,
++            @Nullable final String endPartOfUrlRequest,
++            final Downloader.AsyncCallback callback) throws IOException, ExtractionException {
++        return getMobilePostResponseAsync(endpoint, body, localization, userAgent, "",
++                endPartOfUrlRequest, callback);
++    }
++
+     private static JsonObject getMobilePostResponse(
+             final String endpoint,
+             final byte[] body,
+@@ -1402,7 +1413,38 @@ YoutubeParsingHelper {
+     }
+ 
+     @Nonnull
+-    public static JsonBuilder<JsonObject> prepareWebJsonBuilder(
++    public static JsonBuilder<JsonObject> prepareVisionOsJsonBuilder(
++            @Nonnull final Localization localization,
++            @Nonnull final ContentCountry contentCountry,
++            @Nonnull final String visitorData) {
++        // @formatter:off
++        return JsonObject.builder()
++                .object("context")
++                .object("client")
++                .value("clientName", VISIONOS_CLIENT_NAME)
++                .value("clientVersion", VISIONOS_CLIENT_VERSION)
++                .value("clientScreen", WATCH_CLIENT_SCREEN)
++                .value("platform", MOBILE_CLIENT_PLATFORM)
++                .value("osName", "visionOS")
++                .value("osVersion", VISIONOS_VERSION)
++                .value("deviceMake", "Apple")
++                .value("deviceModel", VISIONOS_DEVICE_MODEL)
++                .value("visitorData", visitorData)
++                .value("hl", localization.getLocalizationCode())
++                .value("gl", contentCountry.getCountryCode())
++                .value("utcOffsetMinutes", 0)
++                .end()
++                .object("request")
++                .array("internalExperimentFlags")
++                .end()
++                .value("useSsl", true)
++                .end()
++                .object("user")
++                .value("lockedSafetyMode", false)
++                .end()
++                .end();
++        // @formatter:on
++    }
+             @Nonnull final Localization localization,
+             @Nonnull final ContentCountry contentCountry,
+             @Nonnull final String videoId) {
+@@ -1673,6 +1715,15 @@ YoutubeParsingHelper {
+                 + ")";
+     }
+ 
++    @Nonnull
++    public static String getVisionOsUserAgent(@Nullable final Localization localization) {
++        return "com.google.visionos.youtube/" + VISIONOS_CLIENT_VERSION + "("
++                + VISIONOS_DEVICE_MODEL + "; U; CPU visionOS " + VISIONOS_USER_AGENT_VERSION
++                + " like Mac OS X; "
++                + (localization != null ? localization : Localization.DEFAULT).getCountryCode()
++                + ")";
++    }
++
+ 
+     /**
+      * Add the <code>X-YouTube-Client-Name</code>, <code>X-YouTube-Client-Version</code>,
+diff --git a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/extractors/YoutubeStreamExtractor.java b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/extractors/YoutubeStreamExtractor.java
+index ee43bdd..9059f34 100644
+--- a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/extractors/YoutubeStreamExtractor.java
++++ b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/extractors/YoutubeStreamExtractor.java
+@@ -1335,7 +1335,7 @@ public class YoutubeStreamExtractor extends StreamExtractor {
+         CancellableCall safariCall = null;
+ 
+         if (StringUtils.isBlank(ServiceList.YouTube.getTokens())) {
+-            androidCall = fetchAndroidMobileJsonPlayer(contentCountry, localization, videoId);
++            androidCall = fetchVisionOsJsonPlayer(contentCountry, localization, videoId);
+         } else {
+             safariCall = fetchSafariJsonPlayer(contentCountry, localization, videoId);
+         }
+@@ -1625,6 +1625,62 @@ public class YoutubeStreamExtractor extends StreamExtractor {
+                         + "&id=" + videoId, callback);
+     }
+ 
++    private CancellableCall fetchVisionOsJsonPlayer(@Nonnull final ContentCountry contentCountry,
++                                                    @Nonnull final Localization localization,
++                                                    @Nonnull final String videoId)
++            throws IOException, ExtractionException {
++        final InnertubeClientRequestInfo visionOsClientInfo =
++                InnertubeClientRequestInfo.ofVisionOsClient();
++
++        final Map<String, List<String>> headers = new HashMap<>();
++        headers.put("Content-Type", singletonList("application/json"));
++        headers.put("User-Agent", singletonList(getVisionOsUserAgent(localization)));
++        headers.put("X-Goog-Api-Format-Version", singletonList("2"));
++
++        final String userAgent = getVisionOsUserAgent(localization);
++        String visitorData = YoutubeParsingHelper.getVisitorDataFromInnertube(visionOsClientInfo,
++                localization, contentCountry, headers, YOUTUBEI_V1_GAPIS_URL, null, false);
++        androidCpn = generateContentPlaybackNonce();
++        final byte[] mobileBody = JsonWriter.string(
++                prepareVisionOsJsonBuilder(localization, contentCountry, visitorData)
++                        .value(VIDEO_ID, videoId)
++                        .value(CPN, androidCpn)
++                        .value(CONTENT_CHECK_OK, true)
++                        .value(RACY_CHECK_OK, true)
++                        .done())
++                .getBytes(StandardCharsets.UTF_8);
++
++        final Downloader.AsyncCallback callback = new Downloader.AsyncCallback() {
++            @Override
++            public void onSuccess(Response response) throws ExtractionException {
++                try {
++                    final JsonObject visionOsPlayerResponse = JsonUtils.toJsonObject(getValidJsonResponseBody(response));
++                    if (isPlayerResponseNotValid(visionOsPlayerResponse, videoId)) {
++                        return;
++                    }
++
++                    YoutubeStreamExtractor.this.playerResponse = visionOsPlayerResponse;
++
++                    final JsonObject streamingData = visionOsPlayerResponse.getObject(STREAMING_DATA);
++                    if (!isNullOrEmpty(streamingData)) {
++                        androidStreamingData = streamingData;
++                        if (isNullOrEmpty(playerCaptionsTracklistRenderer)) {
++                            playerCaptionsTracklistRenderer = visionOsPlayerResponse.getObject("captions")
++                                    .getObject("playerCaptionsTracklistRenderer");
++                        }
++                    }
++                } catch (Exception e) {
++                    e.printStackTrace();
++                    errors.add(e);
++                }
++            }
++        };
++
++        return getJsonVisionOsPostResponseAsync(PLAYER,
++                mobileBody, localization, userAgent, "&t=" + generateTParameter()
++                        + "&id=" + videoId, callback);
++    }
++
+     /**
+      * Download the {@code TVHTML5_SIMPLY_EMBEDDED_PLAYER} JSON player as an embed client to bypass
+      * some age-restrictions and assign the streaming data to the {@code html5StreamingData} JSON
