@@ -1,16 +1,25 @@
 ﻿diff --git a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeService.java b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeService.java
-index 7e917fb..657eb3b 100644
+index 7e917fb..91be353 100644
 --- a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeService.java
 +++ b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeService.java
-@@ -172,7 +172,15 @@ public class YoutubeService extends StreamingService {
+@@ -32,6 +32,7 @@ import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeChannelTa
+ import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeCommentsExtractor;
+ import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeFeedExtractor;
+ import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeMixPlaylistExtractor;
++import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeMusicKioskExtractor;
+ import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeMusicSearchExtractor;
+ import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubePlaylistExtractor;
+ import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeSearchExtractor;
+@@ -172,7 +173,16 @@ public class YoutubeService extends StreamingService {
                      new YoutubeTrendingLinkHandlerFactory(),
                      "Recommended Lives"
              );
 -            list.setDefaultKiosk("Recommended Lives");
 +            list.addKioskEntry(
-+                    (streamingService, url, id) -> new YoutubeChannelTabExtractor(
++                    (streamingService, url, id) -> new YoutubeMusicKioskExtractor(
 +                            YoutubeService.this,
-+                            YoutubeChannelTabLinkHandlerFactory.getInstance().fromUrl(url)
++                            YoutubeChannelTabLinkHandlerFactory.getInstance().fromUrl(url),
++                            id
 +                    ),
 +                    new YoutubeTrendingLinkHandlerFactory(),
 +                    YoutubeTrendingLinkHandlerFactory.MUSIC_KIOSK_ID
@@ -19,6 +28,77 @@ index 7e917fb..657eb3b 100644
          } catch (final Exception e) {
              throw new ExtractionException(e);
          }
+diff --git a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/extractors/YoutubeMusicKioskExtractor.java b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/extractors/YoutubeMusicKioskExtractor.java
+new file mode 100644
+index 0000000..7c54ff8
+--- /dev/null
++++ b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/extractors/YoutubeMusicKioskExtractor.java
+@@ -0,0 +1,65 @@
++package org.schabi.newpipe.extractor.services.youtube.extractors;
++
++import org.schabi.newpipe.extractor.InfoItem;
++import org.schabi.newpipe.extractor.ListExtractor.InfoItemsPage;
++import org.schabi.newpipe.extractor.Page;
++import org.schabi.newpipe.extractor.StreamingService;
++import org.schabi.newpipe.extractor.downloader.Downloader;
++import org.schabi.newpipe.extractor.exceptions.ExtractionException;
++import org.schabi.newpipe.extractor.exceptions.ParsingException;
++import org.schabi.newpipe.extractor.kiosk.KioskExtractor;
++import org.schabi.newpipe.extractor.linkhandler.ListLinkHandler;
++import org.schabi.newpipe.extractor.stream.StreamInfoItem;
++
++import java.io.IOException;
++import java.util.ArrayList;
++import java.util.List;
++
++import javax.annotation.Nonnull;
++
++public class YoutubeMusicKioskExtractor extends KioskExtractor<StreamInfoItem> {
++    private final YoutubeChannelTabExtractor delegate;
++
++    public YoutubeMusicKioskExtractor(final StreamingService service,
++                                      final ListLinkHandler linkHandler,
++                                      final String kioskId) {
++        super(service, linkHandler, kioskId);
++        delegate = new YoutubeChannelTabExtractor(service, linkHandler);
++    }
++
++    @Override
++    public void onFetchPage(@Nonnull final Downloader downloader)
++            throws IOException, ExtractionException {
++        delegate.fetchPage();
++    }
++
++    @Nonnull
++    @Override
++    public String getName() throws ParsingException {
++        return delegate.getName();
++    }
++
++    @Nonnull
++    @Override
++    public InfoItemsPage<StreamInfoItem> getInitialPage()
++            throws IOException, ExtractionException {
++        return toStreamPage(delegate.getInitialPage());
++    }
++
++    @Override
++    public InfoItemsPage<StreamInfoItem> getPage(final Page page)
++            throws IOException, ExtractionException {
++        return toStreamPage(delegate.getPage(page));
++    }
++
++    private static InfoItemsPage<StreamInfoItem> toStreamPage(
++            final InfoItemsPage<InfoItem> page) {
++        final List<StreamInfoItem> items = new ArrayList<>();
++        for (final InfoItem item : page.getItems()) {
++            if (item instanceof StreamInfoItem) {
++                items.add((StreamInfoItem) item);
++            }
++        }
++        return new InfoItemsPage<>(items, page.getNextPage(), page.getErrors());
++    }
++}
 diff --git a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/linkHandler/YoutubeTrendingLinkHandlerFactory.java b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/linkHandler/YoutubeTrendingLinkHandlerFactory.java
 index 3f62556..35606f6 100644
 --- a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/linkHandler/YoutubeTrendingLinkHandlerFactory.java
