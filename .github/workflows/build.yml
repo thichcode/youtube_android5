@@ -4,6 +4,10 @@ on:
   push:
     branches: [master, main]
     tags: ['v*']
+    paths:
+      - 'app/**'
+      - 'gradlew'
+      - 'build.gradle'
   workflow_dispatch:
 
 permissions:
