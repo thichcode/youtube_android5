@@ -1,0 +1,45 @@
+﻿name: Build PipePipe VN
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone PipePipe with submodules
+        run: |
+          git clone --depth 1 --branch v4.9.2 --recurse-submodules https://github.com/InfinityLoop1308/PipePipe.git pipepipe
+          cd pipepipe/PipePipeClient
+          sed -i 's/resValue "string", "app_name", "PipePipe"/resValue "string", "app_name", "PipePipe VN"/' app/build.gradle
+          sed -i 's/versionName "4.9.2"/versionName "4.9.2-vn"/' app/build.gradle
+          sed -i 's/android:defaultValue="@string\/default_localization_key"/android:defaultValue="VN"/' app/src/main/res/xml/content_settings.xml
+          sed -i 's/<\/PreferenceScreen>/    <EditTextPreference\n        android:defaultValue="https:\/\/shortvideo-resolver.onrender.com"\n        android:key="resolver_url_key"\n        android:title="Video Resolver URL"\n        android:summary="URL of the video resolver API"\n        app:singleLineTitle="false"\n        app:iconSpaceReserved="false" \/>\n\n<\/PreferenceScreen>/' app/src/main/res/xml/content_settings.xml
+          sed -i 's/<\/resources>/<string name="resolver_url_key">resolver_url_key<\/string>\n<string name="resolver_url_title">Video Resolver URL<\/string>\n<string name="resolver_url_summary">URL of the video resolver API (e.g. https:\/\/shortvideo-resolver.onrender.com)<\/string>\n<\/resources>/' app/src/main/res/values/strings.xml
+          echo "org.gradle.jvmargs=-Xmx4g" >> pipepipe/PipePipeClient/gradle.properties
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v3
+        with:
+          java-version: 11
+          distribution: "temurin"
+          cache: 'gradle'
+
+      - name: Build release APK
+        run: |
+          cd pipepipe/PipePipeClient
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Collect APKs
+        run: |
+          mkdir -p release-apks
+          cp pipepipe/PipePipeClient/app/build/outputs/apk/release/*.apk release-apks/ || true
+          ls -la release-apks/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v4.9.2-vn
+          name: PipePipe VN v4.9.2-vn
+          files: release-apks/*.apk
+          generate_release_notes: true
