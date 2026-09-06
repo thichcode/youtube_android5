@@ -47,7 +47,7 @@ index fad7c8e..8f154cc 100644
 +    }
  }
 diff --git a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeParsingHelper.java b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeParsingHelper.java
-index ec040f1..a07a245 100644
+index ec040f1..dcb85f6 100644
 --- a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeParsingHelper.java
 +++ b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeParsingHelper.java
 @@ -1245,6 +1245,17 @@ YoutubeParsingHelper {
@@ -68,11 +68,11 @@ index ec040f1..a07a245 100644
      private static JsonObject getMobilePostResponse(
              final String endpoint,
              final byte[] body,
-@@ -1402,7 +1413,38 @@ YoutubeParsingHelper {
+@@ -1401,6 +1412,40 @@ YoutubeParsingHelper {
+         // @formatter:on
      }
  
-     @Nonnull
--    public static JsonBuilder<JsonObject> prepareWebJsonBuilder(
++    @Nonnull
 +    public static JsonBuilder<JsonObject> prepareVisionOsJsonBuilder(
 +            @Nonnull final Localization localization,
 +            @Nonnull final ContentCountry contentCountry,
@@ -105,10 +105,11 @@ index ec040f1..a07a245 100644
 +                .end();
 +        // @formatter:on
 +    }
++
+     @Nonnull
+     public static JsonBuilder<JsonObject> prepareWebJsonBuilder(
              @Nonnull final Localization localization,
-             @Nonnull final ContentCountry contentCountry,
-             @Nonnull final String videoId) {
-@@ -1673,6 +1715,15 @@ YoutubeParsingHelper {
+@@ -1673,6 +1718,15 @@ YoutubeParsingHelper {
                  + ")";
      }
  
