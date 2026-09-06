@@ -1,5 +1,5 @@
 ﻿diff --git a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeService.java b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeService.java
-index 7e917fb..91be353 100644
+index 7e917fb..5371284 100644
 --- a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeService.java
 +++ b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeService.java
 @@ -32,6 +32,7 @@ import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeChannelTa
@@ -18,7 +18,7 @@ index 7e917fb..91be353 100644
 +            list.addKioskEntry(
 +                    (streamingService, url, id) -> new YoutubeMusicKioskExtractor(
 +                            YoutubeService.this,
-+                            YoutubeChannelTabLinkHandlerFactory.getInstance().fromUrl(url),
++                            new YoutubeTrendingLinkHandlerFactory().fromUrl(url),
 +                            id
 +                    ),
 +                    new YoutubeTrendingLinkHandlerFactory(),
@@ -30,10 +30,10 @@ index 7e917fb..91be353 100644
          }
 diff --git a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/extractors/YoutubeMusicKioskExtractor.java b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/extractors/YoutubeMusicKioskExtractor.java
 new file mode 100644
-index 0000000..7c54ff8
+index 0000000..e15aa00
 --- /dev/null
 +++ b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/extractors/YoutubeMusicKioskExtractor.java
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,67 @@
 +package org.schabi.newpipe.extractor.services.youtube.extractors;
 +
 +import org.schabi.newpipe.extractor.InfoItem;
@@ -45,6 +45,7 @@ index 0000000..7c54ff8
 +import org.schabi.newpipe.extractor.exceptions.ParsingException;
 +import org.schabi.newpipe.extractor.kiosk.KioskExtractor;
 +import org.schabi.newpipe.extractor.linkhandler.ListLinkHandler;
++import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory;
 +import org.schabi.newpipe.extractor.stream.StreamInfoItem;
 +
 +import java.io.IOException;
@@ -54,13 +55,14 @@ index 0000000..7c54ff8
 +import javax.annotation.Nonnull;
 +
 +public class YoutubeMusicKioskExtractor extends KioskExtractor<StreamInfoItem> {
-+    private final YoutubeChannelTabExtractor delegate;
++    private final YoutubeSearchExtractor delegate;
 +
 +    public YoutubeMusicKioskExtractor(final StreamingService service,
 +                                      final ListLinkHandler linkHandler,
-+                                      final String kioskId) {
++                                      final String kioskId) throws ParsingException {
 +        super(service, linkHandler, kioskId);
-+        delegate = new YoutubeChannelTabExtractor(service, linkHandler);
++        delegate = new YoutubeSearchExtractor(service,
++                YoutubeSearchQueryHandlerFactory.getInstance().fromQuery("karaoke nhß║íc trß║╗"));
 +    }
 +
 +    @Override
@@ -100,16 +102,16 @@ index 0000000..7c54ff8
 +    }
 +}
 diff --git a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/linkHandler/YoutubeTrendingLinkHandlerFactory.java b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/linkHandler/YoutubeTrendingLinkHandlerFactory.java
-index 3f62556..35606f6 100644
+index 3f62556..37fbaf4 100644
 --- a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/linkHandler/YoutubeTrendingLinkHandlerFactory.java
 +++ b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/linkHandler/YoutubeTrendingLinkHandlerFactory.java
 @@ -34,20 +34,30 @@ import java.util.List;
  
  public class YoutubeTrendingLinkHandlerFactory extends ListLinkHandlerFactory {
  
-+    public static final String MUSIC_KIOSK_ID = "Nhß║íc Viß╗çt";
++    public static final String MUSIC_KIOSK_ID = "Karaoke";
 +    public static final String MUSIC_KIOSK_URL =
-+            "https://www.youtube.com/channel/UC-9-kyTW8ZkZNDHQJ6FgpwQ/videos";
++            "https://www.youtube.com/results?search_query=karaoke+nhac+tre";
 +
      public String getUrl(final String id,
                           final List<FilterItem> contentFilters,
