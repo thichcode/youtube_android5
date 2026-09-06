@@ -9,78 +9,34 @@ jobs:
     steps:
       - name: Clone PipePipe
         run: |
-          git clone --depth 1 --branch v4.9.2 https://github.com/InfinityLoop1308/PipePipe.git pipepipe
-          cd pipepipe
           git config --global url."https://github.com/".insteadOf "git@github.com:"
-          git submodule update --init --depth 1
+          git clone --depth 1 --branch v4.9.2 https://github.com/InfinityLoop1308/PipePipe.git pipepipe
+          cd pipepipe && git submodule update --init --depth 1
 
-      - name: Patch PipePipe for VN
+      - name: Patch app name and version
+        working-directory: pipepipe/PipePipeClient
         run: |
-          cd pipepipe/PipePipeClient
+          sed -i 's/resValue "string", "app_name", "PipePipe"/resValue "string", "app_name", "PipePipe VN"/' app/build.gradle
+          sed -i 's/versionName "4.9.2"/versionName "4.9.2-vn"/' app/build.gradle
 
-          # App name and version
-          python3 -c "
-          import re
-          with open('app/build.gradle', 'r') as f:
-              content = f.read()
-          content = content.replace('\"PipePipe\"', '\"PipePipe VN\"')
-          content = content.replace('versionName \"4.9.2\"', 'versionName \"4.9.2-vn\"')
-          with open('app/build.gradle', 'w') as f:
-              f.write(content)
-          "
+      - name: Patch default country to VN
+        working-directory: pipepipe/PipePipeClient
+        run: |
+          sed -i '/content_country_key/{n;s/android:defaultValue="@string\/default_localization_key"/android:defaultValue="VN"/}' app/src/main/res/xml/content_settings.xml
 
-          # Default country to VN
-          python3 -c "
-          with open('app/src/main/res/xml/content_settings.xml', 'r') as f:
-              content = f.read()
-          old = 'android:key=\"@string/content_country_key\"'
-          idx = content.find(old)
-          if idx >= 0:
-              before = content[:idx]
-              after = content[idx:]
-              after = after.replace(
-                  'android:defaultValue=\"@string/default_localization_key\"',
-                  'android:defaultValue=\"VN\"',
-                  1
-              )
-              content = before + after
-          with open('app/src/main/res/xml/content_settings.xml', 'w') as f:
-              f.write(content)
-          "
+      - name: Add resolver URL setting
+        working-directory: pipepipe/PipePipeClient
+        run: |
+          sed -i '/<\/PreferenceScreen>/i\    <EditTextPreference\n        android:defaultValue="https://shortvideo-resolver.onrender.com"\n        android:key="resolver_url_key"\n        android:title="Video Resolver URL"\n        android:summary="URL of the video resolver API"\n        app:singleLineTitle="false"\n        app:iconSpaceReserved="false" />\n' app/src/main/res/xml/content_settings.xml
 
-          # Add resolver URL setting
-          python3 -c "
-          with open('app/src/main/res/xml/content_settings.xml', 'r') as f:
-              content = f.read()
-          resolver_pref = '''    <EditTextPreference
-        android:defaultValue=\"https://shortvideo-resolver.onrender.com\"
-        android:key=\"resolver_url_key\"
-        android:title=\"Video Resolver URL\"
-        android:summary=\"URL of the video resolver API\"
-        app:singleLineTitle=\"false\"
-        app:iconSpaceReserved=\"false\" />
+      - name: Add resolver strings
+        working-directory: pipepipe/PipePipeClient
+        run: |
+          sed -i '/<\/resources>/i\<string name="resolver_url_key">resolver_url_key</string>\n<string name="resolver_url_title">Video Resolver URL</string>\n<string name="resolver_url_summary">URL of the video resolver API (e.g. https://shortvideo-resolver.onrender.com)</string>' app/src/main/res/values/strings.xml
 
-'''
-          content = content.replace('</PreferenceScreen>', resolver_pref + '</PreferenceScreen>')
-          with open('app/src/main/res/xml/content_settings.xml', 'w') as f:
-              f.write(content)
-          "
-
-          # Add resolver strings
-          python3 -c "
-          with open('app/src/main/res/values/strings.xml', 'r') as f:
-              content = f.read()
-          resolver_strings = '''<string name=\"resolver_url_key\">resolver_url_key</string>
-<string name=\"resolver_url_title\">Video Resolver URL</string>
-<string name=\"resolver_url_summary\">URL of the video resolver API (e.g. https://shortvideo-resolver.onrender.com)</string>
-'''
-          content = content.replace('</resources>', resolver_strings + '</resources>')
-          with open('app/src/main/res/values/strings.xml', 'w') as f:
-              f.write(content)
-          "
-
-          # Add gradle JVM args
-          echo "org.gradle.jvmargs=-Xmx4g" >> gradle.properties
+      - name: Add gradle JVM args
+        working-directory: pipepipe/PipePipeClient
+        run: echo "org.gradle.jvmargs=-Xmx4g" >> gradle.properties
 
       - name: Set up JDK 11
         uses: actions/setup-java@v3
@@ -90,8 +46,8 @@ jobs:
           cache: 'gradle'
 
       - name: Build release APK
+        working-directory: pipepipe/PipePipeClient
         run: |
-          cd pipepipe/PipePipeClient
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace
 
