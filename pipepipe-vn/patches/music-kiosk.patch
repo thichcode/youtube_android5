@@ -1,0 +1,69 @@
+﻿diff --git a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeService.java b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeService.java
+index 7e917fb..657eb3b 100644
+--- a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeService.java
++++ b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/YoutubeService.java
+@@ -172,7 +172,15 @@ public class YoutubeService extends StreamingService {
+                     new YoutubeTrendingLinkHandlerFactory(),
+                     "Recommended Lives"
+             );
+-            list.setDefaultKiosk("Recommended Lives");
++            list.addKioskEntry(
++                    (streamingService, url, id) -> new YoutubeChannelTabExtractor(
++                            YoutubeService.this,
++                            YoutubeChannelTabLinkHandlerFactory.getInstance().fromUrl(url)
++                    ),
++                    new YoutubeTrendingLinkHandlerFactory(),
++                    YoutubeTrendingLinkHandlerFactory.MUSIC_KIOSK_ID
++            );
++            list.setDefaultKiosk(YoutubeTrendingLinkHandlerFactory.MUSIC_KIOSK_ID);
+         } catch (final Exception e) {
+             throw new ExtractionException(e);
+         }
+diff --git a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/linkHandler/YoutubeTrendingLinkHandlerFactory.java b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/linkHandler/YoutubeTrendingLinkHandlerFactory.java
+index 3f62556..35606f6 100644
+--- a/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/linkHandler/YoutubeTrendingLinkHandlerFactory.java
++++ b/extractor/src/main/java/org/schabi/newpipe/extractor/services/youtube/linkHandler/YoutubeTrendingLinkHandlerFactory.java
+@@ -34,20 +34,30 @@ import java.util.List;
+ 
+ public class YoutubeTrendingLinkHandlerFactory extends ListLinkHandlerFactory {
+ 
++    public static final String MUSIC_KIOSK_ID = "Nhß║íc Viß╗çt";
++    public static final String MUSIC_KIOSK_URL =
++            "https://www.youtube.com/channel/UC-9-kyTW8ZkZNDHQJ6FgpwQ/videos";
++
+     public String getUrl(final String id,
+                          final List<FilterItem> contentFilters,
+                          final List<FilterItem> sortFilter) {
+-        if(!id.equals("Trending")){
+-            return "https://www.youtube.com/channel/UC4R8DWoMoI7CAwX8_LjQHig";
++        if (id.equals("Trending")) {
++            return "https://www.youtube.com/feed/trending";
++        }
++        if (id.equals(MUSIC_KIOSK_ID)) {
++            return MUSIC_KIOSK_URL;
+         }
+-        return "https://www.youtube.com/feed/trending";
++        return "https://www.youtube.com/channel/UC4R8DWoMoI7CAwX8_LjQHig";
+     }
+ 
+     @Override
+     public String getId(final String url) {
+-        if(url.equals("https://www.youtube.com/feed/trending")){
++        if (url.equals("https://www.youtube.com/feed/trending")) {
+             return "Trending";
+         }
++        if (url.equals(MUSIC_KIOSK_URL)) {
++            return MUSIC_KIOSK_ID;
++        }
+         return "Recommended Lives";
+     }
+ 
+@@ -62,6 +72,7 @@ public class YoutubeTrendingLinkHandlerFactory extends ListLinkHandlerFactory {
+ 
+         final String urlPath = urlObj.getPath();
+         return Utils.isHTTP(urlObj) && (isYoutubeURL(urlObj) || isInvidiousURL(urlObj))
+-                && (urlPath.equals("/feed/trending") || urlPath.equals("/channel/UC4R8DWoMoI7CAwX8_LjQHig"));
++                && (urlPath.equals("/feed/trending") || urlPath.equals("/channel/UC4R8DWoMoI7CAwX8_LjQHig")
++                || url.equals(MUSIC_KIOSK_URL));
+     }
+ }

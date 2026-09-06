@@ -1,0 +1,13 @@
+﻿diff --git a/app/src/main/java/org/schabi/newpipe/util/KioskTranslator.java b/app/src/main/java/org/schabi/newpipe/util/KioskTranslator.java
+index 00ef19c..c88f94a 100644
+--- a/app/src/main/java/org/schabi/newpipe/util/KioskTranslator.java
++++ b/app/src/main/java/org/schabi/newpipe/util/KioskTranslator.java
+@@ -84,6 +84,8 @@ public final class KioskTranslator {
+             case "Top Lives":
+             case "Recommended Lives":
+                 return R.drawable.ic_live_tv;
++            case "Nhß║íc Viß╗çt":
++                return R.drawable.ic_music_note;
+             case "Featured":
+             case "Recommended Videos":
+                 return R.drawable.ic_stars;

@@ -24,6 +24,12 @@ jobs:
           git -C pipepipe/PipePipeExtractor apply $GITHUB_WORKSPACE/pipepipe-vn/patches/visionos-backport.patch
           git -C pipepipe/PipePipeExtractor diff --stat
 
+      - name: Apply Music kiosk patches
+        run: |
+          git -C pipepipe/PipePipeExtractor apply $GITHUB_WORKSPACE/pipepipe-vn/patches/music-kiosk.patch
+          git -C pipepipe/PipePipeClient apply $GITHUB_WORKSPACE/pipepipe-vn/patches/music-kiosk-client.patch
+          git -C pipepipe/PipePipeExtractor diff --stat
+
       - name: Patch app name and version
         working-directory: pipepipe/PipePipeClient
         run: |
